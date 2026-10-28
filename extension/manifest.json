@@ -1,0 +1,65 @@
+{
+  "manifest_version": 3,
+  "name": "RoleSync: AI ATS Tailoring & Automation Assistant",
+  "version": "2.0.0",
+  "description": "Zero-hallucination real-time ATS optimization, Typst PDF compilation, and form automation.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "sidePanel",
+    "scripting",
+    "alarms",
+    "identity"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "host_permissions": [
+    "https://*.greenhouse.io/*",
+    "https://*.lever.co/*",
+    "https://*.myworkdayjobs.com/*",
+    "https://*.linkedin.com/*",
+    "https://*.icims.com/*",
+    "https://*.taleo.net/*",
+    "https://api.rolesync.io/*"
+  ],
+  "background": {
+    "service_worker": "dist/background/worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.greenhouse.io/*",
+        "https://*.lever.co/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://*.linkedin.com/*",
+        "https://*.icims.com/*",
+        "https://*.taleo.net/*"
+      ],
+      "js": ["dist/content/injector.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "dist/sidepanel/index.html"
+  },
+  "action": {
+    "default_title": "Open RoleSync"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://api.rolesync.io wss://api.rolesync.io https://identity.googleapis.com https://*.google.com"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/logo.png", "dist/content/isolated.css"],
+      "matches": [
+        "https://*.greenhouse.io/*",
+        "https://*.lever.co/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://*.linkedin.com/*"
+      ]
+    }
+  ]
+}
+
