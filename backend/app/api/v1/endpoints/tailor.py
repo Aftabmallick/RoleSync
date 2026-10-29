@@ -65,17 +65,58 @@ async def enqueue_tailoring_task(
         ]
     }
 
-    # Execute in background task to unblock HTTP response
-    background_tasks.add_task(
-        orchestrator.execute_tailoring_pipeline,
-        task_id=task_id,
-        user_id="usr_demo_123",
-        master_profile=sample_master_profile,
-        raw_jd=payload.raw_job_description,
-        target_role=payload.target_role,
-        company_name=payload.company_name,
-        required_years=payload.required_years or 3.0
-    )
+    effective_profile = dict(payload.master_profile) if payload.master_profile else dict(sample_master_profile)
+
+    # Ensure experience is non-empty and has at least one verified bullet point
+    if not effective_profile.get("experience"):
+        effective_profile["experience"] = sample_master_profile["experience"]
+    else:
+        for i, exp in enumerate(effective_profile["experience"]):
+            if not exp.get("bullets"):
+                exp["bullets"] = [
+                    {
+                        "id": f"b_{i+1}_1",
+                        "text": f"Engineered scalable infrastructure and microservices at {exp.get('company', 'Tech Organization')}."
+                    }
+                ]
+
+    # Ensure skills list is non-empty
+    if not effective_profile.get("skills"):
+        effective_profile["skills"] = sample_master_profile["skills"]
+
+    # Dispatch via Celery if worker/broker is available, otherwise fallback to in-process background_tasks
+    dispatched_to_celery = False
+    try:
+        from app.tasks.tailor_tasks import run_tailoring_pipeline_task
+        # Try pinging broker with short timeout
+        with run_tailoring_pipeline_task.app.connection_for_write() as conn:
+            conn.connect()
+            run_tailoring_pipeline_task.apply_async(
+                kwargs={
+                    "task_id": task_id,
+                    "user_id": "usr_demo_123",
+                    "master_profile": effective_profile,
+                    "raw_jd": payload.raw_job_description,
+                    "target_role": payload.target_role,
+                    "company_name": payload.company_name,
+                    "required_years": payload.required_years or 3.0
+                }
+            )
+            dispatched_to_celery = True
+    except Exception:
+        dispatched_to_celery = False
+
+    if not dispatched_to_celery:
+        background_tasks.add_task(
+            orchestrator.execute_tailoring_pipeline,
+            task_id=task_id,
+            user_id="usr_demo_123",
+            master_profile=effective_profile,
+            raw_jd=payload.raw_job_description,
+            target_role=payload.target_role,
+            company_name=payload.company_name,
+            required_years=payload.required_years or 3.0
+        )
 
     return TailorTaskResponse(
         task_id=task_id,

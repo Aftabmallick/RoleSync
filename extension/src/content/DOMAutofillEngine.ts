@@ -77,10 +77,10 @@ export class DOMAutofillEngine {
     dataUri: string,
     fileName: string
   ): Promise<void> {
-    """
-    Synthesizes a FileList using the DataTransfer API to safely attach
-    binary PDF blobs to standard file inputs.
-    """
+    /**
+     * Synthesizes a FileList using the DataTransfer API to safely attach
+     * binary PDF blobs to standard file inputs.
+     */
     const res = await fetch(dataUri);
     const blob = await res.blob();
     const file = new File([blob], fileName, {
@@ -97,9 +97,9 @@ export class DOMAutofillEngine {
   }
 
   public async populateAriaCombobox(container: HTMLElement, value: string): Promise<void> {
-    """
-    Handles Workday and modern React-Select ARIA comboboxes and custom listboxes.
-    """
+    /**
+     * Handles Workday and modern React-Select ARIA comboboxes and custom listboxes.
+     */
     container.focus();
     container.click();
     await this.delay(120);

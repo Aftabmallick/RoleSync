@@ -43,9 +43,20 @@ class Settings(BaseSettings):
     HUNTER_API_KEY: Optional[str] = None
     ZEROBOUNCE_API_KEY: Optional[str] = None
     
+    # LLM / NVIDIA Configuration
+    NVIDIA_API_KEY: Optional[str] = None
+    NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
+    NVIDIA_MODEL: str = "deepseek-ai/deepseek-v4.1-flash"
+    OPENAI_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    
     # Typst Engine
     TYPST_TEMPLATE_PATH: str = "app/templates/template.typ"
     TYPST_BINARY_PATH: str = "typst"
+
+    # ONNX NLI Model
+    ONNX_NLI_MODEL_PATH: str = "models/onnx/nli_quantized.onnx"
 
     model_config = SettingsConfigDict(
         env_file=".env",

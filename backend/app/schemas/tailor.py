@@ -9,6 +9,7 @@ class TailorRequest(BaseModel):
     raw_job_description: str
     custom_instructions: Optional[str] = None
     required_years: Optional[float] = 3.0
+    master_profile: Optional[Dict[str, Any]] = None
 
 
 class TailorTaskResponse(BaseModel):

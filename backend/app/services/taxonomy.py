@@ -51,7 +51,7 @@ class SkillTaxonomy:
         for alias in sorted_aliases:
             # Special case short/common words to avoid false positive triggers in prose
             if alias in {"c", "r", "go", "next"}:
-                pattern = re.compile(rf'(?i)(?:\b{re.escape(alias)}\b\s+(?:programming|language|developer|runtime|framework|stack))|(?:\b(?:using|in|with)\s+{re.escape(alias)}\b)')
+                pattern = re.compile(rf'(?i)(?:\b{re.escape(alias)}\b\s+(?:programming|language|developer|engineer|programmer|runtime|framework|stack))|(?:\b(?:using|in|with)\s+{re.escape(alias)}\b)')
             else:
                 pattern = re.compile(rf'(?i)\b{re.escape(alias)}\b')
             self._compiled_regex_patterns.append((pattern, self.alias_to_canonical[alias]))

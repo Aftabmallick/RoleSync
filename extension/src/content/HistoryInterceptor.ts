@@ -10,7 +10,7 @@ export class HistoryInterceptor {
 
     const wrapHistoryMethod = (type: 'pushState' | 'replaceState') => {
       const original = history[type];
-      return function (this: History, ...args: any[]) {
+      return function (this: History, ...args: [any, string, (string | URL | null | undefined)?]) {
         const result = original.apply(this, args);
         window.dispatchEvent(new Event('rolesync:location_change'));
         return result;

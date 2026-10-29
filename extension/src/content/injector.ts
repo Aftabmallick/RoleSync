@@ -46,8 +46,16 @@ HistoryInterceptor.install((newUrl) => {
   setTimeout(() => runExtraction(), 1500);
 });
 
-// 3. Listen for autofill execution commands from background / sidepanel
-chrome.runtime.onMessage.addListener((message: AppExtensionMessage, sender, sendResponse) => {
+// 3. Listen for commands from background / sidepanel
+chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
+  if (message.action === 'TRIGGER_PAGE_EXTRACTION') {
+    console.log('[RoleSync] Manual trigger page extraction received.');
+    runExtraction()
+      .then(() => sendResponse({ status: 'EXTRACTION_TRIGGERED' }))
+      .catch((err) => sendResponse({ status: 'FAILED', error: String(err) }));
+    return true;
+  }
+
   if (message.action === 'EXECUTE_DOM_AUTOFILL') {
     const { mappings } = message.payload;
     console.log('[RoleSync] Executing DOM autofill with mappings:', mappings);

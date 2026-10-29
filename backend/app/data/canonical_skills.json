@@ -33,16 +33,29 @@
     "ruby on rails": ["ruby on rails", "rails", "ror"],
     "asp.net": ["asp.net", "asp.net core", ".net core", "dotnet", ".net"],
     "graphql": ["graphql", "apollo graphql", "relay"],
+    "pydantic": ["pydantic"],
     "pytorch": ["pytorch", "torch"],
     "tensorflow": ["tensorflow", "tf", "keras"],
     "scikit-learn": ["scikit-learn", "sklearn"]
   },
+  "ai_machine_learning": {
+    "langgraph": ["langgraph", "lang graph"],
+    "langchain": ["langchain", "lang chain"],
+    "rag": ["rag", "retrieval-augmented generation", "retrieval augmented generation"],
+    "vector search": ["vector search", "hybrid search", "semantic search", "dense retrieval", "bm25"],
+    "multi-agent systems": ["multi-agent systems", "multi-agent", "agentic workflows", "agentic systems", "ai agents"],
+    "model context protocol (mcp)": ["model context protocol", "mcp", "mcp server", "mcp servers"],
+    "agent evaluation": ["agent evaluation", "evals", "rag evals", "llm evals"],
+    "guardrails": ["guardrails", "nemo guardrails", "guardrail", "llm guardrails"],
+    "litellm": ["litellm", "lite llm"]
+  },
   "databases": {
-    "postgresql": ["postgresql", "postgres", "psql", "postgres db", "pg"],
+    "postgresql": ["postgresql", "postgres", "psql", "postgres db", "pg", "postgresql (rls)", "rls"],
     "mysql": ["mysql", "my sql"],
     "sqlite": ["sqlite", "sqlite3"],
     "mongodb": ["mongodb", "mongo"],
-    "redis": ["redis"],
+    "redis": ["redis", "redis caching"],
+    "clickhouse": ["clickhouse", "click house"],
     "cassandra": ["cassandra", "apache cassandra"],
     "elasticsearch": ["elasticsearch", "elastic search", "opensearch", "elk"],
     "snowflake": ["snowflake", "snowflake db"],
@@ -51,6 +64,19 @@
     "pinecone": ["pinecone"],
     "milvus": ["milvus"],
     "neo4j": ["neo4j", "graph database"]
+  },
+  "messaging_queues": {
+    "kafka": ["kafka", "apache kafka"],
+    "celery": ["celery", "celery workers"],
+    "azure service bus": ["azure service bus", "service bus", "asb"],
+    "rabbitmq": ["rabbitmq", "rabbit mq"]
+  },
+  "observability_monitoring": {
+    "opentelemetry": ["opentelemetry", "otel"],
+    "langfuse": ["langfuse"],
+    "prometheus": ["prometheus"],
+    "grafana": ["grafana"],
+    "jaeger": ["jaeger"]
   },
   "cloud_devops": {
     "kubernetes": ["kubernetes", "k8s", "kube", "k8s cluster"],
@@ -71,6 +97,7 @@
     "restful api": ["restful api", "rest api", "rest", "restful apis"],
     "grpc": ["grpc", "protocol buffers", "protobuf"],
     "event-driven architecture": ["event-driven", "event-driven architecture", "eda", "event driven"],
-    "serverless": ["serverless", "aws lambda", "cloud functions"]
+    "serverless": ["serverless", "aws lambda", "cloud functions"],
+    "asynchronous programming": ["asynchronous programming", "async/await", "asyncio"]
   }
 }

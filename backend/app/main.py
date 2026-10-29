@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.router import api_v1_router
+from app.api.v1.websockets.task_stream import router as websocket_router
 from app.core.errors import register_problem_handlers
 
 app = FastAPI(
@@ -26,6 +27,7 @@ app.add_middleware(
 )
 
 app.include_router(api_v1_router, prefix=settings.API_V1_STR)
+app.include_router(websocket_router)
 
 
 @app.get("/health", tags=["Health"])

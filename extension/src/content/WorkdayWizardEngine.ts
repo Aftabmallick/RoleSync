@@ -1,5 +1,5 @@
 import { DOMAutofillEngine, FormMapping } from './DOMAutofillEngine';
-import { StatefulTaskRunner, AutopilotCheckpoint } from './StatefulTaskRunner';
+import { StatefulTaskRunner } from './StatefulTaskRunner';
 
 export type WorkdayStage =
   | 'MY_INFORMATION'
@@ -283,7 +283,7 @@ export class WorkdayWizardEngine {
 
     // Wait for transition or DOM mutation
     return new Promise((resolve) => {
-      let timeoutId: NodeJS.Timeout;
+      let timeoutId: ReturnType<typeof setTimeout>;
       const observer = new MutationObserver(() => {
         const newStage = this.detectCurrentStage();
         if (newStage !== 'UNKNOWN') {

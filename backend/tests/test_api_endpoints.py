@@ -1,11 +1,13 @@
 import unittest
 from fastapi.testclient import TestClient
 from app.main import app
+from app.api.v1.endpoints.profile import encrypted_profiles_db
 
 
 class TestApiEndpoints(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
+        encrypted_profiles_db.clear()
 
     def test_health_check(self):
         response = self.client.get("/health")
@@ -60,6 +62,45 @@ class TestApiEndpoints(unittest.TestCase):
         )
         self.assertEqual(replay_resp.status_code, 401)
         self.assertIn("reuse detected", replay_resp.json()["detail"].lower())
+
+    def test_master_profile_encryption_api(self):
+        # 1. GET default initial profile
+        get_res = self.client.get("/api/v1/profile")
+        self.assertEqual(get_res.status_code, 200)
+        data = get_res.json()
+        self.assertIn("profile", data)
+        self.assertEqual(data["profile"]["personal"]["full_name"], "Alex Mercer")
+
+        # 2. POST custom profile (AES-256 HKDF encrypted)
+        custom_payload = {
+            "personal": {
+                "full_name": "Jordan Bell",
+                "email": "jordan@bell.io",
+                "phone": "+1 555-888-9999",
+                "location": "Austin, TX",
+                "linkedin": "linkedin.com/in/jordanbell",
+                "github": "github.com/jordanbell"
+            },
+            "skills": [
+                {"name": "Rust", "category": "Languages"},
+                {"name": "Kubernetes", "category": "DevOps"}
+            ],
+            "experience": [],
+            "education": [],
+            "summary": "Rust Systems Architect"
+        }
+        post_res = self.client.post("/api/v1/profile", json=custom_payload)
+        self.assertEqual(post_res.status_code, 200)
+        post_data = post_res.json()
+        self.assertEqual(post_data["profile"]["personal"]["full_name"], "Jordan Bell")
+        self.assertIn("encrypted", post_data["message"].lower())
+
+        # 3. GET profile back decrypted
+        verify_res = self.client.get("/api/v1/profile")
+        self.assertEqual(verify_res.status_code, 200)
+        verify_data = verify_res.json()
+        self.assertEqual(verify_data["profile"]["personal"]["full_name"], "Jordan Bell")
+        self.assertEqual(verify_data["profile"]["skills"][0]["name"], "Rust")
 
 
 if __name__ == "__main__":

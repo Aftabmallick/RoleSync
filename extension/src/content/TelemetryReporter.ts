@@ -37,21 +37,39 @@ export class TelemetryReporter {
         timestamp: Date.now(),
       };
 
-      const res = await fetch(this.API_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        console.warn(`[RoleSync] Telemetry reported selector drift on ${window.location.hostname}`);
-        return true;
+      // 1. Prefer Chrome MV3 background service worker message bus to bypass page CSP/Mixed-Content blocks
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        try {
+          chrome.runtime.sendMessage({
+            action: 'TELEMETRY_REPORT',
+            correlationId: `tel_${Date.now()}`,
+            timestamp: Date.now(),
+            payload,
+          } as any).catch(() => {});
+          return true;
+        } catch {
+          // Extension context might be disconnected
+        }
       }
+
+      // 2. Direct fetch fallback (only when safe)
+      if (window.location.protocol === 'http:') {
+        const res = await fetch(this.API_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        }).catch(() => null);
+
+        if (res && res.ok) {
+          console.warn(`[RoleSync] Telemetry reported selector drift on ${window.location.hostname}`);
+          return true;
+        }
+      }
+
       return false;
-    } catch (err) {
-      console.warn('[RoleSync] Failed to dispatch selector failure telemetry:', err);
+    } catch {
       return false;
     }
   }

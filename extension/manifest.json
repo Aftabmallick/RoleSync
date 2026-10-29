@@ -11,16 +11,10 @@
     "alarms",
     "identity"
   ],
-  "optional_host_permissions": [
-    "https://*/*"
-  ],
   "host_permissions": [
-    "https://*.greenhouse.io/*",
-    "https://*.lever.co/*",
-    "https://*.myworkdayjobs.com/*",
-    "https://*.linkedin.com/*",
-    "https://*.icims.com/*",
-    "https://*.taleo.net/*",
+    "<all_urls>",
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*",
     "https://api.rolesync.io/*"
   ],
   "background": {
@@ -30,12 +24,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.greenhouse.io/*",
-        "https://*.lever.co/*",
-        "https://*.myworkdayjobs.com/*",
-        "https://*.linkedin.com/*",
-        "https://*.icims.com/*",
-        "https://*.taleo.net/*"
+        "<all_urls>"
       ],
       "js": ["dist/content/injector.js"],
       "run_at": "document_idle"
@@ -48,17 +37,12 @@
     "default_title": "Open RoleSync"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://api.rolesync.io wss://api.rolesync.io https://identity.googleapis.com https://*.google.com"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:8000 ws://localhost:8000 http://127.0.0.1:8000 ws://127.0.0.1:8000 https://api.rolesync.io wss://api.rolesync.io https://identity.googleapis.com https://*.google.com"
   },
   "web_accessible_resources": [
     {
       "resources": ["assets/logo.png", "dist/content/isolated.css"],
-      "matches": [
-        "https://*.greenhouse.io/*",
-        "https://*.lever.co/*",
-        "https://*.myworkdayjobs.com/*",
-        "https://*.linkedin.com/*"
-      ]
+      "matches": ["<all_urls>"]
     }
   ]
 }
