@@ -74,3 +74,4 @@ async def report_selector_failure(report: SelectorFailureReport):
         action_taken="Queued for selector registry self-healing",
         message="Telemetry recorded. Drift monitoring alerted.",
     )
+

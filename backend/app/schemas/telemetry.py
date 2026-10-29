@@ -19,3 +19,4 @@ class SelectorFailureResponse(BaseModel):
     report_id: str
     action_taken: str = "Queued for selector registry self-healing"
     message: str = "Telemetry recorded. Drift monitoring alerted."
+

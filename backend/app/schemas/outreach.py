@@ -68,3 +68,4 @@ class OutreachSynthesizeResponse(BaseModel):
     mode: str
     status: str  # 'READY_FOR_PREVIEW' or 'ENQUEUED_AUTOPILOT'
     daily_quota_remaining: int
+

@@ -108,3 +108,4 @@ def register_problem_handlers(app: FastAPI) -> None:
             content=problem.model_dump(exclude_none=True),
             media_type="application/problem+json",
         )
+

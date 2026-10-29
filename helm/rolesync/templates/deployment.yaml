@@ -103,3 +103,4 @@ spec:
               value: {{ .Values.env.QDRANT_PORT | quote }}
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
+

@@ -91,3 +91,4 @@ env:
   REDIS_URL: "redis://rolesync-redis.database.svc.cluster.local:6379/0"
   QDRANT_HOST: "rolesync-qdrant.database.svc.cluster.local"
   QDRANT_PORT: "6333"
+
