@@ -141,7 +141,7 @@ class ResumeParserService:
             return llm_result
 
         # 2. Segment Document into Core Sections
-        sections = cls._segment_sections(full_text, raw_lines)
+        sections, section_order = cls._segment_sections(full_text, raw_lines)
 
         # 3. Extract Contact Information
         personal = cls._extract_personal_info(raw_lines, full_text, extracted_links)
@@ -165,14 +165,15 @@ class ResumeParserService:
             "experience": experience,
             "projects": projects,
             "education": education,
-            "summary": summary
+            "summary": summary,
+            "section_order": section_order
         }
 
     # -------------------------------------------------------------------------
     # Section Segmentation
     # -------------------------------------------------------------------------
     @classmethod
-    def _segment_sections(cls, full_text: str, raw_lines: List[str]) -> Dict[str, str]:
+    def _segment_sections(cls, full_text: str, raw_lines: List[str]) -> Tuple[Dict[str, str], List[str]]:
         """
         Partitions resume lines into distinct functional zones:
         summary, experience, projects, education, skills, certifications.
@@ -220,15 +221,20 @@ class ResumeParserService:
         found_sections.sort(key=lambda x: x[0])
 
         section_texts: Dict[str, List[str]] = {k: [] for k in headers.keys()}
+        ordered_sec_names: List[str] = []
+        for _, sec in found_sections:
+            if sec not in ordered_sec_names and sec in ["summary", "skills", "experience", "projects", "education"]:
+                ordered_sec_names.append(sec)
+
         if not found_sections:
-            return {"experience": full_text, "education": full_text, "skills": full_text, "summary": ""}
+            return {"experience": full_text, "education": full_text, "skills": full_text, "summary": ""}, ["skills", "experience", "education"]
 
         for idx, (line_idx, sec_name) in enumerate(found_sections):
             start = line_idx + 1
             end = found_sections[idx + 1][0] if idx + 1 < len(found_sections) else len(raw_lines)
             section_texts[sec_name].extend(raw_lines[start:end])
 
-        return {sec: "\n".join(lines).strip() for sec, lines in section_texts.items()}
+        return {sec: "\n".join(lines).strip() for sec, lines in section_texts.items()}, ordered_sec_names
 
     # -------------------------------------------------------------------------
     # Entity Extractors

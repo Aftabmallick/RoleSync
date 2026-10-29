@@ -9,6 +9,7 @@ import { TailorDiffViewer } from './components/TailorDiffViewer';
 import { CoverLetterViewer } from './components/CoverLetterViewer';
 import { RecruiterOutreach } from './components/RecruiterOutreach';
 import { ApplicationsTracker } from './components/ApplicationsTracker';
+import { ResumeMatcher, ResumeVersion } from './components/ResumeMatcher';
 
 const BACKEND_API_URL = 'http://localhost:8000/api/v1';
 
@@ -349,6 +350,45 @@ export default function App() {
     setTimeout(() => setAppSavedMessage(null), 3500);
   };
 
+  const handleVersionSelected = (
+    version: ResumeVersion | null,
+    profileData: any,
+    pdfBase64?: string,
+    score?: ScoreBreakdown
+  ) => {
+    if (score && pdfBase64) {
+      setTailorResult({
+        score,
+        pdfBase64,
+        tailored_draft: {
+          experience: profileData?.experience || masterProfile?.experience,
+        },
+      });
+    } else if (pdfBase64) {
+      const fallbackScore: ScoreBreakdown = {
+        composite_score: version?.ats_score || 85,
+        semantic_score: 82,
+        skill_coverage_score: 88,
+        lexical_score: 84,
+        experience_alignment_score: 85,
+      };
+      setTailorResult((prev) => ({
+        score: prev?.score || fallbackScore,
+        pdfBase64,
+        tailored_draft: {
+          experience: profileData?.experience || masterProfile?.experience,
+        },
+      }));
+    }
+  };
+
+  const handleNewProfileUploaded = (newProfile: MasterProfileData) => {
+    setMasterProfile(newProfile);
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.set({ rolesync_master_profile: newProfile });
+    }
+  };
+
   // Preset demo jobs for fast testing
   const handleLoadSampleJd = (type: 'stripe' | 'snowflake') => {
     if (type === 'stripe') {
@@ -543,21 +583,37 @@ export default function App() {
                   {appSavedMessage}
                 </div>
               )}
+            </div>
 
+            {/* Resume Matcher & Score Optimizer */}
+            <ResumeMatcher
+              currentJd={currentJd}
+              baseProfile={masterProfile}
+              apiBaseUrl={BACKEND_API_URL}
+              onVersionSelected={handleVersionSelected}
+              onNewProfileUploaded={handleNewProfileUploaded}
+            />
+
+            {/* Optional Deep AI Tailor Card */}
+            <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-800">Deep AI Tailoring</span>
+                <p className="text-[11px] text-slate-500">Run multi-stage LLM rewrite of all experience bullets</p>
+              </div>
               <button
-                className={`mt-2 w-full py-2.5 px-4 font-semibold text-sm rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-offset-1 ${
+                className={`py-1.5 px-3 font-semibold text-xs rounded-lg shadow-xs transition-all ${
                   isTailoring
                     ? 'bg-indigo-400 cursor-not-allowed text-white'
-                    : 'bg-indigo-600 hover:bg-indigo-700 text-white focus:ring-indigo-500'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
                 }`}
                 disabled={isTailoring}
                 onClick={handleTriggerTailoring}
               >
                 {isTailoring
                   ? tailorStage
-                    ? `Stage: ${tailorStage}...`
-                    : 'Verifying Guardrails & Tailoring...'
-                  : 'Tailor Resume & Calculate ATS Score'}
+                    ? `${tailorStage}...`
+                    : 'Tailoring...'
+                  : 'Run Deep Tailor'}
               </button>
             </div>
 

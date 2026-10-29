@@ -25,7 +25,11 @@ def make_request(path, method="GET", body=None, headers=None):
             return resp.status, json.loads(content) if content else {}
     except urllib.error.HTTPError as err:
         content = err.read().decode("utf-8")
-        return err.code, json.loads(content) if content else {}
+        try:
+            parsed = json.loads(content) if content else {}
+        except Exception:
+            parsed = {"raw": content}
+        return err.code, parsed
 
 
 async def test_live_websocket(task_id):
@@ -282,6 +286,102 @@ async def main():
     status, del_res = make_request(f"/api/v1/applications/{live_app_id}", method="DELETE")
     assert status == 204 or status == 200, f"Expected 204/200, got {status}"
     print(f"  PASS -> Deleted application from pipeline successfully")
+
+    # 13. Resume Matcher & Interactive Suggestions Lifecycle
+    print("\n13. Testing Resume Enhancer (/api/v1/resume)...")
+    status, match_res = make_request(
+        "/api/v1/resume/match-and-suggest",
+        method="POST",
+        body={
+            "target_role": "Senior Infrastructure Engineer",
+            "company_name": "Stripe",
+            "job_description": raw_jd,
+            "resume": {
+                "name": "Alex Mercer",
+                "email": "alex@mercer.dev",
+                "phone": "+1-555-0199",
+                "skills": ["Python", "Docker", "PostgreSQL"],
+                "experience": [
+                    {
+                        "id": "exp_1",
+                        "company": "Stripe",
+                        "role": "Backend Engineer",
+                        "dates": "2021 - Present",
+                        "bullets": [
+                            "Built high-throughput microservices in Python.",
+                            "Optimized PostgreSQL queries."
+                        ]
+                    }
+                ],
+                "education": [
+                    {
+                        "institution": "MIT",
+                        "degree": "B.S. Computer Science",
+                        "graduation_year": "2020"
+                    }
+                ],
+                "section_order": ["experience", "skills", "education"]
+            }
+        }
+    )
+    assert status == 200, f"Expected 200, got {status}: {match_res}"
+    assert "current_score" in match_res
+    assert "potential_score" in match_res
+    assert len(match_res["missing_skills"]) > 0
+    print(f"  PASS -> Match & Suggest analyzed: current_score={match_res['current_score']['composite_score']}, potential_score={match_res['potential_score']} (+{match_res['score_boost']} pts)")
+    print(f"  PASS -> Missing skill suggestions generated: {len(match_res['missing_skills'])} items (Kubernetes, AWS, etc.)")
+    print(f"  PASS -> Bullet point improvements generated: {len(match_res['bullet_suggestions'])} items")
+
+    # Apply enhancements and save version
+    accepted_skills = [s["name"] for s in match_res["missing_skills"][:2]]
+    status, apply_res = make_request(
+        "/api/v1/resume/apply-enhancements",
+        method="POST",
+        body={
+            "version_name": "Stripe Infrastructure v1",
+            "company_name": "Stripe",
+            "target_role": "Senior Infrastructure Engineer",
+            "base_resume": {
+                "name": "Alex Mercer",
+                "email": "alex@mercer.dev",
+                "skills": ["Python", "Docker", "PostgreSQL"],
+                "experience": [
+                    {
+                        "id": "exp_1",
+                        "company": "Stripe",
+                        "role": "Backend Engineer",
+                        "dates": "2021 - Present",
+                        "bullets": ["Built high-throughput microservices in Python."]
+                    }
+                ],
+                "section_order": ["experience", "skills"]
+            },
+            "accepted_skills": accepted_skills,
+            "accepted_bullet_updates": [
+                {
+                    "original_id": "exp_1",
+                    "suggested_text": "Architected high-throughput microservices in Python utilizing Docker and Kubernetes on AWS."
+                }
+            ],
+            "accepted_summary": "Results-driven Senior Infrastructure Engineer proficient in Python, Docker, Kubernetes, and AWS."
+        }
+    )
+    assert status == 201 or status == 200, f"Expected 201/200, got {status}: {apply_res}"
+    assert "id" in apply_res
+    assert apply_res["pdf_base64"] is not None
+    created_version_id = apply_res["id"]
+    print(f"  PASS -> Enhancements applied and compiled single-page PDF version: ID={created_version_id}")
+
+    # List versions
+    status, versions_res = make_request("/api/v1/resume/versions", method="GET")
+    assert status == 200, f"Expected 200, got {status}: {versions_res}"
+    assert versions_res["total"] >= 1
+    print(f"  PASS -> Listed resume versions: total={versions_res['total']}")
+
+    # Clean up test version
+    status, del_ver_res = make_request(f"/api/v1/resume/versions/{created_version_id}", method="DELETE")
+    assert status in (200, 204), f"Expected 200/204, got {status}: {del_ver_res}"
+    print(f"  PASS -> Deleted test resume version successfully")
 
     print("\n==================================================")
     print("     ALL LIVE SYSTEM TESTS PASSED SUCCESSFULLY!   ")

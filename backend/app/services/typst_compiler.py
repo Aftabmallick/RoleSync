@@ -48,6 +48,26 @@ class TypstCompilerService:
         src += f'  font_size: {font_size}pt,\n'
         src += f'  text_spacing: {text_spacing},\n'
 
+        # Section Order preservation from base resume
+        section_order = profile.get("section_order")
+        if not section_order:
+            candidates = []
+            if tailored_draft.get("summary") or profile.get("summary"):
+                candidates.append("summary")
+            if tailored_draft.get("skills") or profile.get("skills"):
+                candidates.append("skills")
+            if tailored_draft.get("experience") or profile.get("experience"):
+                candidates.append("experience")
+            if profile.get("projects"):
+                candidates.append("projects")
+            if profile.get("education"):
+                candidates.append("education")
+            section_order = candidates or ["skills", "experience", "education"]
+
+        sec_order_items = [f'"{self.escape_typst(s)}"' for s in section_order]
+        sec_order_str = ", ".join(sec_order_items) + (", " if len(sec_order_items) == 1 else "")
+        src += f'  section_order: ({sec_order_str}),\n'
+
         # Technical Skills Matrix (Categorized)
         skills_raw = tailored_draft.get("skills", [])
         skill_to_cat = {s.get("name", "").lower(): s.get("category", "Technical") for s in profile.get("skills", [])}

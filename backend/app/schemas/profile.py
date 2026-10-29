@@ -100,6 +100,7 @@ class MasterProfilePayload(BaseModel):
     projects: List[ProjectItem] = Field(default_factory=list, description="Personal or featured technical projects")
     education: List[EducationItem] = Field(default_factory=list)
     summary: Optional[str] = Field("", description="Candidate master bio / summary")
+    section_order: Optional[List[str]] = Field(default=None, description="Preserved section ordering from base resume")
     preferences: Optional[Preferences] = Field(default_factory=Preferences, description="Work auth & EEO preferences")
 
 
