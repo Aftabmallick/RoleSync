@@ -31,27 +31,52 @@ RoleSync/
 ├── backend/
 │   ├── alembic/                    # Database migrations & PostgreSQL RLS DDL
 │   ├── app/
-│   │   ├── api/v1/                 # FastAPI REST & WebSocket endpoints
-│   │   ├── core/                   # Security, DB connection pool & JWT logic
+│   │   ├── api/v1/                 # FastAPI REST (Auth, Tailoring, Outreach, Telemetry)
+│   │   ├── core/                   # Security, DB connection pool, JWT & RFC 7807 Errors
 │   │   ├── models/                 # SQLAlchemy 2.0 async database models
 │   │   ├── schemas/                # Pydantic v2 data contracts
-│   │   ├── services/               # Typst compiler, Vector store & Auth services
+│   │   ├── services/               # Typst compiler, Scoring, Guardrails & Outreach services
 │   │   ├── templates/              # ATS US-Letter Typst resume template
 │   │   └── main.py                 # FastAPI application entrypoint
 │   ├── tests/                      # Unit & integration test suites
+│   ├── Dockerfile                  # Hardened multi-stage Typst container
 │   └── requirements.txt
 │
-└── extension/
-    ├── manifest.json               # Chrome Manifest V3 declaration
-    ├── src/
-    │   ├── background/             # Ephemeral worker & Keepalive port manager
-    │   ├── content/                # Content scripts & DOM injectors
-    │   ├── sidepanel/              # React 18 / Tailwind CSS Side Panel UI
-    │   ├── store/                  # Zustand session state management
-    │   └── types/                  # Discriminated union message protocols
-    ├── package.json
-    └── vite.config.ts
+├── extension/
+│   ├── manifest.json               # Chrome Manifest V3 declaration
+│   ├── src/
+│   │   ├── background/             # Ephemeral worker & Keepalive port manager
+│   │   ├── content/                # Workday Wizard, SPA interceptor, DOM injectors & Telemetry
+│   │   ├── sidepanel/              # React 18 / Tailwind CSS Side Panel UI
+│   │   ├── store/                  # Zustand session state management
+│   │   └── types/                  # Discriminated union message protocols
+│   ├── package.json
+│   └── vite.config.ts
+│
+├── helm/rolesync/                  # Production Kubernetes Helm chart (API & Worker HPA)
+├── docker-compose.yml              # Local multi-service stack (FastAPI, Postgres, Redis, Qdrant)
+└── Dockerfile                      # Root container build definition
 ```
+
+---
+
+## Deployment & Production Infrastructure
+
+### Docker Compose Local Stack
+
+```bash
+# Launch FastAPI, Postgres 16, Redis 7.2, and Qdrant:
+docker-compose up -d --build
+```
+
+### Kubernetes Helm Deployment
+
+```bash
+# Lint and install RoleSync on Kubernetes cluster:
+helm lint helm/rolesync
+helm upgrade --install rolesync helm/rolesync --namespace production --create-namespace
+```
+
 
 ---
 

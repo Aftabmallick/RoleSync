@@ -1,6 +1,9 @@
 // RoleSync Resilient Dynamic ATS Extraction Engine
 
+import { TelemetryReporter } from './TelemetryReporter';
+
 export interface ExtractedJobDescription {
+
   atsProvider: 'GREENHOUSE' | 'LEVER' | 'WORKDAY' | 'LINKEDIN' | 'ICIMS' | 'TALEO' | 'GENERIC';
   title: string;
   company: string;
@@ -92,6 +95,7 @@ export class JobExtractorEngine {
 
     if (!bodyNode) {
       console.warn(`[RoleSync] Primary selectors timed out for ${provider}. Falling back to heuristic text-density parsing.`);
+      TelemetryReporter.reportDrift(provider, targetConfig.bodies);
       return this.parseGenericReadability(provider);
     }
 
