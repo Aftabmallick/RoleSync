@@ -114,8 +114,10 @@ npm run build
 
 ## Documentation
 
+- [User Guide (How to Use RoleSync - Non-Technical)](USER_GUIDE.md)
 - [Full Architecture Specification v2.0](ARCHITECTURE_V2.md)
 - [Implementation Plan & Roadmap](IMPLEMENTATION_PLAN.md)
+
 
 ---
 
