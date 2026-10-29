@@ -1,0 +1,93 @@
+# Default values for rolesync helm chart
+global:
+  environment: production
+
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+api:
+  replicaCount: 3
+  image:
+    repository: ghcr.io/aftabmallick/rolesync-api
+    tag: "2.0.0"
+    pullPolicy: IfNotPresent
+  port: 8000
+  resources:
+    limits:
+      cpu: "1000m"
+      memory: "1024Mi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 15
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 75
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+
+worker:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/aftabmallick/rolesync-worker
+    tag: "2.0.0"
+    pullPolicy: IfNotPresent
+  concurrency: 4
+  resources:
+    limits:
+      cpu: "2000m"
+      memory: "2048Mi"
+    requests:
+      cpu: "500m"
+      memory: "1024Mi"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 75
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: api.rolesync.ai
+      paths:
+        - path: /
+          pathType: Prefix
+
+env:
+  POSTGRES_HOST: "rolesync-postgres.database.svc.cluster.local"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "rolesync_db"
+  REDIS_URL: "redis://rolesync-redis.database.svc.cluster.local:6379/0"
+  QDRANT_HOST: "rolesync-qdrant.database.svc.cluster.local"
+  QDRANT_PORT: "6333"

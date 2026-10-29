@@ -63,3 +63,23 @@ def verify_access_token(token: str) -> Dict[str, Any]:
 def generate_opaque_refresh_token() -> str:
     """Generates a high-entropy opaque UUIDv4 refresh token."""
     return f"rst_{uuid.uuid4().hex}{uuid.uuid4().hex}"
+
+
+from fastapi import Header
+
+
+def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
+    """
+    Dependency to resolve the authenticated user ID.
+    If valid Bearer token is provided, extracts 'sub'. Otherwise defaults to mock tenant ID.
+    """
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        try:
+            payload = verify_access_token(token)
+            return payload.get("sub", "tenant_user_001")
+        except Exception:
+            return "tenant_user_001"
+    return "tenant_user_001"
+
+

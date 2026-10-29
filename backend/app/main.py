@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.router import api_v1_router
+from app.core.errors import register_problem_handlers
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -11,7 +12,11 @@ app = FastAPI(
     docs_url=f"{settings.API_V1_STR}/docs",
 )
 
+# Register RFC 7807 problem+json error handlers
+register_problem_handlers(app)
+
 # CORS Middleware allowing Chrome extension requests
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

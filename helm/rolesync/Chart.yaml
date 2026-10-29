@@ -1,0 +1,15 @@
+apiVersion: v2
+name: rolesync
+description: RoleSync Production Helm Chart - Enterprise AI Job Application Copilot & ATS Application Platform
+type: application
+version: 2.0.0
+appVersion: "2.0.0"
+keywords:
+  - rolesync
+  - fastapi
+  - celery
+  - ai-copilot
+  - qdrant
+maintainers:
+  - name: RoleSync Engineering Team
+    email: engineering@rolesync.ai
