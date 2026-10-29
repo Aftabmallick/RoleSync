@@ -6,6 +6,7 @@ interface CoverLetterViewerProps {
   rawJd: string;
   candidateProfile?: any;
   apiBaseUrl?: string;
+  onToast?: (type: 'success' | 'error' | 'warning' | 'info', message: string, title?: string) => void;
 }
 
 interface CoverLetterData {
@@ -22,6 +23,7 @@ export const CoverLetterViewer: React.FC<CoverLetterViewerProps> = ({
   rawJd,
   candidateProfile,
   apiBaseUrl = 'http://localhost:8000/api/v1',
+  onToast,
 }) => {
   const [tone, setTone] = useState<'professional' | 'confident' | 'enthusiastic'>('professional');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -52,12 +54,19 @@ export const CoverLetterViewer: React.FC<CoverLetterViewerProps> = ({
         const data = await res.json();
         setCoverLetter(data);
         setEditableText(data.full_text);
+        if (onToast) {
+          onToast('success', `Cover letter generated (${data.word_count} words).`, 'Cover Letter Ready');
+        }
       } else {
-        alert('Could not synthesize cover letter. Check backend server.');
+        const errMsg = 'Could not synthesize cover letter. Check if backend server is running.';
+        if (onToast) onToast('error', errMsg, 'Synthesis Failed');
+        else console.warn(errMsg);
       }
     } catch (err) {
       console.error('[RoleSync UI] Cover letter synthesis error:', err);
-      alert('Error connecting to backend for cover letter synthesis.');
+      const errMsg = 'Error connecting to backend for cover letter synthesis.';
+      if (onToast) onToast('error', errMsg, 'Connection Error');
+      else console.warn(errMsg);
     } finally {
       setIsGenerating(false);
     }

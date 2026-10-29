@@ -51,6 +51,7 @@ interface ResumeMatcherProps {
   apiBaseUrl?: string;
   onVersionSelected: (version: ResumeVersion | null, profileData: any, pdfBase64?: string, score?: ScoreBreakdown) => void;
   onNewProfileUploaded?: (newProfile: any) => void;
+  onToast?: (type: 'success' | 'error' | 'warning' | 'info', message: string, title?: string) => void;
 }
 
 export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
@@ -59,6 +60,7 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
   apiBaseUrl = 'http://localhost:8000/api/v1',
   onVersionSelected,
   onNewProfileUploaded,
+  onToast,
 }) => {
   const [versions, setVersions] = useState<ResumeVersion[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState<string>('base');
@@ -164,12 +166,14 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
           if (data.profile) {
             if (onNewProfileUploaded) onNewProfileUploaded(data.profile);
             setSelectedVersionId('base');
-            alert('✓ New resume uploaded & parsed successfully into Master Vault!');
+            if (onToast) {
+              onToast('success', 'Resume parsed into Master Vault.', 'Resume Uploaded');
+            }
           }
         }
       } catch (err) {
         console.error('[RoleSync UI] Upload error:', err);
-        alert('Could not parse resume PDF.');
+        if (onToast) onToast('error', 'Could not parse resume PDF. Ensure backend is running.', 'Upload Error');
       } finally {
         setIsUploadingResume(false);
         if (fileUploadRef.current) fileUploadRef.current.value = '';
@@ -214,11 +218,11 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
         setAcceptSummary(true);
         setVersionNameInput(`Enhanced for ${currentJd.companyName} (${currentJd.jobTitle})`);
       } else {
-        alert('Failed to match resume against job description.');
+        if (onToast) onToast('error', 'Failed to match resume against job description.', 'Analysis Failed');
       }
     } catch (err) {
       console.error('[RoleSync UI] Match error:', err);
-      alert('Error connecting to backend for resume match.');
+      if (onToast) onToast('error', 'Error connecting to backend for resume match.', 'Connection Error');
     } finally {
       setIsMatching(false);
     }
@@ -254,7 +258,9 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
         const newVer: ResumeVersion = await res.json();
         setVersions((prev) => [newVer, ...prev]);
         setSelectedVersionId(newVer.id);
-        setSaveSuccessMsg(`✓ Saved new version: "${newVer.name}" with ${Math.round(newVer.ats_score)}% ATS Match!`);
+        const succMsg = `✓ Saved version: "${newVer.name}" with ${Math.round(newVer.ats_score)}% ATS Match!`;
+        setSaveSuccessMsg(succMsg);
+        if (onToast) onToast('success', succMsg, 'Version Saved');
 
         // Notify parent of newly enhanced version and its compiled PDF
         onVersionSelected(
@@ -280,10 +286,11 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
           });
         }
       } else {
-        alert('Could not save new resume version.');
+        if (onToast) onToast('error', 'Could not save new resume version.', 'Save Failed');
       }
     } catch (err) {
       console.error('[RoleSync UI] Error saving version:', err);
+      if (onToast) onToast('error', 'Error connecting to backend to save resume version.', 'Save Error');
     } finally {
       setIsSavingVersion(false);
     }

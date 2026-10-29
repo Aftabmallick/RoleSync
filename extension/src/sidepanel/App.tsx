@@ -10,6 +10,8 @@ import { CoverLetterViewer } from './components/CoverLetterViewer';
 import { RecruiterOutreach } from './components/RecruiterOutreach';
 import { ApplicationsTracker } from './components/ApplicationsTracker';
 import { ResumeMatcher, ResumeVersion } from './components/ResumeMatcher';
+import { ToastContainer, ToastMessage, ToastType } from './components/Toast';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const BACKEND_API_URL = 'http://localhost:8000/api/v1';
 
@@ -18,6 +20,10 @@ export default function App() {
   const [executionMode, setExecutionMode] = useState<'copilot' | 'autopilot'>('copilot');
   const [masterProfile, setMasterProfile] = useState<MasterProfileData | null>(null);
   const [keepaliveConnected, setKeepaliveConnected] = useState<boolean>(false);
+  const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [dismissOfflineBanner, setDismissOfflineBanner] = useState<boolean>(false);
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(true);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [currentJd, setCurrentJd] = useState<JDExtractedPayload | null>(null);
   const [isTailoring, setIsTailoring] = useState<boolean>(false);
   const [tailorStage, setTailorStage] = useState<string>('');
@@ -26,6 +32,28 @@ export default function App() {
     pdfBase64?: string;
     tailored_draft?: any;
   } | null>(null);
+
+  const showToast = (type: ToastType, message: string, title?: string) => {
+    const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    setToasts((prev) => [...prev, { id, type, message, title }]);
+  };
+
+  const handleDismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const checkBackendHealth = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/health');
+      if (res.ok) {
+        setBackendStatus('online');
+      } else {
+        setBackendStatus('offline');
+      }
+    } catch {
+      setBackendStatus('offline');
+    }
+  };
 
   // Autofill & Autopilot progress states
   const [autofillProgress, setAutofillProgress] = useState<{
@@ -117,6 +145,10 @@ export default function App() {
   };
 
   useEffect(() => {
+    // 0. Initial Backend Health Check & recurring poll
+    checkBackendHealth();
+    const healthInterval = setInterval(checkBackendHealth, 12000);
+
     // 1. Establish persistent keepalive port connection
     let port: chrome.runtime.Port | null = null;
     try {
@@ -177,6 +209,7 @@ export default function App() {
         chrome.runtime.onMessage.addListener(messageListener);
 
         return () => {
+          clearInterval(healthInterval);
           if (port) port.disconnect();
           chrome.storage.onChanged.removeListener(storageListener);
           chrome.runtime.onMessage.removeListener(messageListener);
@@ -185,6 +218,7 @@ export default function App() {
     }
 
     return () => {
+      clearInterval(healthInterval);
       if (port) port.disconnect();
     };
   }, []);
@@ -242,7 +276,7 @@ export default function App() {
             } else if (data.status === 'FAILED') {
               completed = true;
               setIsTailoring(false);
-              alert(`Tailoring failed: ${data.error}`);
+              showToast('error', `Tailoring failed: ${data.error}`, 'Tailoring Error');
               if (ws) ws.close();
             }
           } catch (e) {
@@ -273,12 +307,13 @@ export default function App() {
                 pdfBase64: data.pdf_base64,
                 tailored_draft: data.tailored_draft,
               });
+              showToast('success', `Tailored single-page resume generated (${data.ats_score?.composite_score || 85}% ATS Score).`, 'Tailoring Complete');
               if (ws) ws.close();
             } else if (data.status === 'FAILED') {
               completed = true;
               clearInterval(interval);
               setIsTailoring(false);
-              alert(`Tailoring failed: ${data.error}`);
+              showToast('error', `Tailoring failed: ${data.error}`, 'Tailoring Error');
               if (ws) ws.close();
             }
           }
@@ -289,7 +324,7 @@ export default function App() {
     } catch (err) {
       console.error('[RoleSync UI] Failed to enqueue task:', err);
       setIsTailoring(false);
-      alert('Could not connect to RoleSync backend. Ensure server is running on port 8000.');
+      showToast('error', 'Could not connect to RoleSync backend. Ensure server is running on port 8000.', 'Backend Offline');
     }
   };
 
@@ -454,7 +489,31 @@ export default function App() {
           >
             <span>{isScanningTab ? '⏳ Scanning...' : '⚡ Scan Tab'}</span>
           </button>
-          <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-full border border-slate-200">
+          
+          {/* Backend Status Indicator (Clickable to re-check) */}
+          <div
+            onClick={checkBackendHealth}
+            className="flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 cursor-pointer px-2 py-1 rounded-full border border-slate-200 transition-colors"
+            title="Click to check backend status"
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                backendStatus === 'online'
+                  ? 'bg-emerald-500 ring-2 ring-emerald-200'
+                  : backendStatus === 'checking'
+                  ? 'bg-amber-400 animate-pulse'
+                  : 'bg-rose-500 ring-2 ring-rose-200'
+              }`}
+            />
+            <span className="text-[11px] font-semibold text-slate-700">
+              {backendStatus === 'online' ? 'Live' : backendStatus === 'checking' ? 'Connecting...' : 'Offline'}
+            </span>
+          </div>
+
+          <div
+            className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-full border border-slate-200"
+            title="Chrome Worker Keepalive Port"
+          >
             <span
               className={`w-2 h-2 rounded-full ${
                 keepaliveConnected ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-amber-400'
@@ -466,6 +525,32 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Backend Offline Warning Banner */}
+      {backendStatus === 'offline' && !dismissOfflineBanner && (
+        <div className="bg-amber-50 border-b border-amber-200 px-3.5 py-2 flex items-center justify-between text-xs text-amber-900 z-10">
+          <div className="flex items-center gap-2">
+            <span>⚠️</span>
+            <span>
+              <strong>Backend Offline:</strong> Run <code className="bg-amber-100 px-1 py-0.5 rounded text-[11px]">uvicorn app.main:app --port 8000</code> for AI features.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={checkBackendHealth}
+              className="text-[11px] font-bold text-amber-900 underline hover:text-amber-700 cursor-pointer"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => setDismissOfflineBanner(true)}
+              className="text-amber-600 hover:text-amber-900 text-xs font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Navigation Tabs */}
       <nav className="flex border-b border-slate-200 bg-white px-3 shrink-0">
@@ -513,275 +598,355 @@ export default function App() {
       {/* Main Container */}
       <main className="p-4 flex-1 flex flex-col gap-4">
         {activeTab === 'profile' ? (
-          <ProfileEditor onSave={(p) => setMasterProfile(p)} apiBaseUrl={BACKEND_API_URL} />
+          <ErrorBoundary fallbackTitle="Master Profile Vault Error">
+            <ProfileEditor
+              onSave={(p) => setMasterProfile(p)}
+              apiBaseUrl={BACKEND_API_URL}
+              onToast={showToast}
+            />
+          </ErrorBoundary>
         ) : activeTab === 'applications' ? (
-          <ApplicationsTracker
-            apiBaseUrl={BACKEND_API_URL}
-            currentJdToSave={jobToTrack}
-            onApplicationSaved={() => setJobToTrack(null)}
-          />
-        ) : currentJd ? (
-          <>
-            {/* Mode Selector Strip */}
-            <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                Execution Mode:
-              </span>
-              <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-bold">
-                <button
-                  onClick={() => setExecutionMode('copilot')}
-                  className={`px-3 py-1 rounded-md transition-all ${
-                    executionMode === 'copilot'
-                      ? 'bg-white text-indigo-600 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  Copilot (Manual)
-                </button>
-                <button
-                  onClick={() => setExecutionMode('autopilot')}
-                  className={`px-3 py-1 rounded-md transition-all flex items-center gap-1 ${
-                    executionMode === 'autopilot'
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <span>🚀 Autopilot (Workday)</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Job Header Card */}
-            <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100">
-                  {currentJd.atsProvider}
-                </span>
-                <div className="flex items-center gap-2">
+          <ErrorBoundary fallbackTitle="Applications Tracker Error">
+            <ApplicationsTracker
+              apiBaseUrl={BACKEND_API_URL}
+              currentJdToSave={jobToTrack}
+              onApplicationSaved={() => setJobToTrack(null)}
+            />
+          </ErrorBoundary>
+        ) : (
+          <ErrorBoundary fallbackTitle="RoleSync Copilot Error">
+            {/* Quick Start Guide Banner (Shown when no JD is loaded yet) */}
+            {showOnboarding && !currentJd && (
+              <div className="bg-gradient-to-r from-indigo-50/90 to-blue-50/90 border border-indigo-100 rounded-xl p-3 flex flex-col gap-2.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-extrabold text-indigo-900 uppercase tracking-wider">
+                      🚀 RoleSync Quick Start
+                    </span>
+                    <span className="text-[10px] bg-indigo-100 text-indigo-800 font-semibold px-1.5 py-0.2 rounded-full">
+                      3 Steps
+                    </span>
+                  </div>
                   <button
-                    onClick={handleSaveToTracker}
-                    className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
-                    title="Track in application pipeline"
+                    onClick={() => setShowOnboarding(false)}
+                    className="text-slate-400 hover:text-slate-600 text-xs p-1"
+                    title="Dismiss Guide"
                   >
-                    + Save to Tracker
-                  </button>
-                  <button
-                    onClick={() => setCurrentJd(null)}
-                    className="text-xs text-slate-400 hover:text-rose-500 transition-colors"
-                    title="Clear Job"
-                  >
-                    ✕ Clear
+                    ✕
                   </button>
                 </div>
-              </div>
 
-              <h2 className="text-base font-bold text-slate-900">{currentJd.jobTitle}</h2>
-              <p className="text-sm text-slate-600 font-medium">{currentJd.companyName}</p>
-
-              {appSavedMessage && (
-                <div className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
-                  {appSavedMessage}
-                </div>
-              )}
-            </div>
-
-            {/* Resume Matcher & Score Optimizer */}
-            <ResumeMatcher
-              currentJd={currentJd}
-              baseProfile={masterProfile}
-              apiBaseUrl={BACKEND_API_URL}
-              onVersionSelected={handleVersionSelected}
-              onNewProfileUploaded={handleNewProfileUploaded}
-            />
-
-            {/* Optional Deep AI Tailor Card */}
-            <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-slate-800">Deep AI Tailoring</span>
-                <p className="text-[11px] text-slate-500">Run multi-stage LLM rewrite of all experience bullets</p>
-              </div>
-              <button
-                className={`py-1.5 px-3 font-semibold text-xs rounded-lg shadow-xs transition-all ${
-                  isTailoring
-                    ? 'bg-indigo-400 cursor-not-allowed text-white'
-                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                }`}
-                disabled={isTailoring}
-                onClick={handleTriggerTailoring}
-              >
-                {isTailoring
-                  ? tailorStage
-                    ? `${tailorStage}...`
-                    : 'Tailoring...'
-                  : 'Run Deep Tailor'}
-              </button>
-            </div>
-
-            {/* ATS Score Card */}
-            {tailorResult?.score && <ScoreCard score={tailorResult.score} />}
-
-            {/* Diff Viewer: What changed between master profile and tailored bullets */}
-            {tailorResult?.tailored_draft?.experience && (
-              <TailorDiffViewer
-                tailoredExperience={tailorResult.tailored_draft.experience}
-                masterExperience={masterProfile?.experience}
-              />
-            )}
-
-            {/* PDF Preview */}
-            {tailorResult?.pdfBase64 && (
-              <PdfPreview
-                pdfBase64={tailorResult.pdfBase64}
-                onDownload={() => {
-                  const link = document.createElement('a');
-                  link.href = `data:application/pdf;base64,${tailorResult.pdfBase64}`;
-                  link.download = `RoleSync_${currentJd.companyName.replace(/\s+/g, '_')}_Tailored_Resume.pdf`;
-                  link.click();
-                }}
-              />
-            )}
-
-            {/* Cover Letter Generator Card */}
-            <CoverLetterViewer
-              targetRole={currentJd.jobTitle}
-              companyName={currentJd.companyName}
-              rawJd={currentJd.rawText}
-              candidateProfile={masterProfile}
-              apiBaseUrl={BACKEND_API_URL}
-            />
-
-            {/* Recruiter Outreach Card with discovery & verification */}
-            <RecruiterOutreach
-              companyName={currentJd.companyName}
-              jobTitle={currentJd.jobTitle}
-              candidateProfile={masterProfile}
-              apiBaseUrl={BACKEND_API_URL}
-            />
-
-            {/* Autofill / Autopilot Action Block */}
-            {tailorResult && (
-              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col gap-3">
-                {executionMode === 'copilot' ? (
-                  <>
-                    <button
-                      className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 flex items-center justify-center gap-1.5"
-                      onClick={handleExecuteAutofill}
-                    >
-                      <span>⚡ Execute 1-Click Autofill & Attach Resume</span>
-                    </button>
-                    {autofillProgress && (
-                      <AutofillProgress
-                        completed={autofillProgress.completed}
-                        total={autofillProgress.total}
-                        currentSelector={autofillProgress.current}
-                      />
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg flex flex-col gap-1 text-xs">
-                      <span className="font-bold text-indigo-900">
-                        Workday Multi-Stage Autopilot Active
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div
+                    onClick={() => setActiveTab('profile')}
+                    className="bg-white p-2.5 rounded-lg border border-slate-200 hover:border-indigo-300 cursor-pointer transition-all shadow-2xs flex flex-col gap-1"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800 text-[11px]">1. Profile Vault</span>
+                      <span className="text-[10px] text-emerald-600 font-bold">
+                        {masterProfile?.personal?.full_name ? '✓ Ready' : 'Set Up'}
                       </span>
-                      <p className="text-[11px] text-indigo-700">
-                        Automatically traverses My Information → My Experience → Questions → Disclosures.
-                        Always pauses at Review for your final consent.
-                      </p>
                     </div>
+                    <p className="text-[10px] text-slate-500 leading-tight">
+                      {masterProfile?.personal?.full_name ? masterProfile.personal.full_name : 'Load or upload resume'}
+                    </p>
+                  </div>
 
+                  <div
+                    onClick={handleScanCurrentTab}
+                    className="bg-white p-2.5 rounded-lg border border-slate-200 hover:border-indigo-300 cursor-pointer transition-all shadow-2xs flex flex-col gap-1"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800 text-[11px]">2. Detect Job</span>
+                      <span className="text-[10px] text-indigo-600 font-bold">Scan Tab</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-tight">
+                      Inspect open career page or pick demo below
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => handleLoadSampleJd('stripe')}
+                    className="bg-white p-2.5 rounded-lg border border-slate-200 hover:border-indigo-300 cursor-pointer transition-all shadow-2xs flex flex-col gap-1"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800 text-[11px]">3. Tailor & Fill</span>
+                      <span className="text-[10px] text-purple-600 font-bold">1-Click</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-tight">
+                      Generates vector PDF & autofills application
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentJd ? (
+              <>
+                {/* Mode Selector Strip */}
+                <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                    Execution Mode:
+                  </span>
+                  <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-bold">
                     <button
-                      className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 flex items-center justify-center gap-1.5 disabled:opacity-50"
-                      disabled={isAutopilotRunning}
-                      onClick={handleExecuteAutopilot}
+                      onClick={() => setExecutionMode('copilot')}
+                      className={`px-3 py-1 rounded-md transition-all ${
+                        executionMode === 'copilot'
+                          ? 'bg-white text-indigo-600 shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
                     >
-                      <span>
-                        {isAutopilotRunning
-                          ? '⏳ Running Multi-Step Traversal...'
-                          : '🚀 Run Autopilot Traversal'}
-                      </span>
+                      Copilot (Manual)
                     </button>
+                    <button
+                      onClick={() => setExecutionMode('autopilot')}
+                      className={`px-3 py-1 rounded-md transition-all flex items-center gap-1 ${
+                        executionMode === 'autopilot'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      <span>🚀 Autopilot (Workday)</span>
+                    </button>
+                  </div>
+                </div>
 
-                    {autopilotState && (
-                      <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex flex-col gap-1 text-xs">
-                        <div className="flex items-center justify-between font-bold text-slate-800">
-                          <span>Stage: {autopilotState.stage}</span>
-                          <span className="text-emerald-700">
-                            {autopilotState.completed} fields filled
-                          </span>
-                        </div>
-                        {autopilotState.message && (
-                          <p className="text-[11px] text-slate-600 leading-relaxed">
-                            {autopilotState.message}
-                          </p>
+                {/* Job Header Card */}
+                <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100">
+                      {currentJd.atsProvider}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSaveToTracker}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
+                        title="Track in application pipeline"
+                      >
+                        + Save to Tracker
+                      </button>
+                      <button
+                        onClick={() => setCurrentJd(null)}
+                        className="text-xs text-slate-400 hover:text-rose-500 transition-colors"
+                        title="Clear Job"
+                      >
+                        ✕ Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  <h2 className="text-base font-bold text-slate-900">{currentJd.jobTitle}</h2>
+                  <p className="text-sm text-slate-600 font-medium">{currentJd.companyName}</p>
+
+                  {appSavedMessage && (
+                    <div className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
+                      {appSavedMessage}
+                    </div>
+                  )}
+                </div>
+
+                {/* Resume Matcher & Score Optimizer */}
+                <ResumeMatcher
+                  currentJd={currentJd}
+                  baseProfile={masterProfile}
+                  apiBaseUrl={BACKEND_API_URL}
+                  onVersionSelected={handleVersionSelected}
+                  onNewProfileUploaded={handleNewProfileUploaded}
+                  onToast={showToast}
+                />
+
+                {/* Optional Deep AI Tailor Card */}
+                <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800">Deep AI Tailoring</span>
+                    <p className="text-[11px] text-slate-500">Run multi-stage LLM rewrite of all experience bullets</p>
+                  </div>
+                  <button
+                    className={`py-1.5 px-3 font-semibold text-xs rounded-lg shadow-xs transition-all ${
+                      isTailoring
+                        ? 'bg-indigo-400 cursor-not-allowed text-white'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                    }`}
+                    disabled={isTailoring}
+                    onClick={handleTriggerTailoring}
+                  >
+                    {isTailoring
+                      ? tailorStage
+                        ? `${tailorStage}...`
+                        : 'Tailoring...'
+                      : 'Run Deep Tailor'}
+                  </button>
+                </div>
+
+                {/* ATS Score Card */}
+                {tailorResult?.score && <ScoreCard score={tailorResult.score} />}
+
+                {/* Diff Viewer */}
+                {tailorResult?.tailored_draft?.experience && (
+                  <TailorDiffViewer
+                    tailoredExperience={tailorResult.tailored_draft.experience}
+                    masterExperience={masterProfile?.experience}
+                  />
+                )}
+
+                {/* PDF Preview */}
+                {tailorResult?.pdfBase64 && (
+                  <PdfPreview
+                    pdfBase64={tailorResult.pdfBase64}
+                    onDownload={() => {
+                      const link = document.createElement('a');
+                      link.href = `data:application/pdf;base64,${tailorResult.pdfBase64}`;
+                      link.download = `RoleSync_${currentJd.companyName.replace(/\s+/g, '_')}_Tailored_Resume.pdf`;
+                      link.click();
+                    }}
+                  />
+                )}
+
+                {/* Cover Letter Generator Card */}
+                <CoverLetterViewer
+                  targetRole={currentJd.jobTitle}
+                  companyName={currentJd.companyName}
+                  rawJd={currentJd.rawText}
+                  candidateProfile={masterProfile}
+                  apiBaseUrl={BACKEND_API_URL}
+                  onToast={showToast}
+                />
+
+                {/* Recruiter Outreach Card */}
+                <RecruiterOutreach
+                  companyName={currentJd.companyName}
+                  jobTitle={currentJd.jobTitle}
+                  candidateProfile={masterProfile}
+                  apiBaseUrl={BACKEND_API_URL}
+                />
+
+                {/* Autofill / Autopilot Action Block */}
+                {tailorResult && (
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col gap-3">
+                    {executionMode === 'copilot' ? (
+                      <>
+                        <button
+                          className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 flex items-center justify-center gap-1.5"
+                          onClick={handleExecuteAutofill}
+                        >
+                          <span>⚡ Execute 1-Click Autofill & Attach Resume</span>
+                        </button>
+                        {autofillProgress && (
+                          <AutofillProgress
+                            completed={autofillProgress.completed}
+                            total={autofillProgress.total}
+                            currentSelector={autofillProgress.current}
+                          />
                         )}
-                        {autopilotState.isPausedForReview && (
-                          <div className="mt-1 p-2 bg-amber-50 border border-amber-200 rounded text-amber-800 font-semibold text-[11px]">
-                            ⚠️ Paused at Final Review. Inspect responses on page and click Submit.
+                      </>
+                    ) : (
+                      <>
+                        <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg flex flex-col gap-1 text-xs">
+                          <span className="font-bold text-indigo-900">
+                            Workday Multi-Stage Autopilot Active
+                          </span>
+                          <p className="text-[11px] text-indigo-700">
+                            Automatically traverses My Information → My Experience → Questions → Disclosures.
+                            Always pauses at Review for your final consent.
+                          </p>
+                        </div>
+
+                        <button
+                          className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          disabled={isAutopilotRunning}
+                          onClick={handleExecuteAutopilot}
+                        >
+                          <span>
+                            {isAutopilotRunning
+                              ? '⏳ Running Multi-Step Traversal...'
+                              : '🚀 Run Autopilot Traversal'}
+                          </span>
+                        </button>
+
+                        {autopilotState && (
+                          <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex flex-col gap-1 text-xs">
+                            <div className="flex items-center justify-between font-bold text-slate-800">
+                              <span>Stage: {autopilotState.stage}</span>
+                              <span className="text-emerald-700">
+                                {autopilotState.completed} fields filled
+                              </span>
+                            </div>
+                            {autopilotState.message && (
+                              <p className="text-[11px] text-slate-600 leading-relaxed">
+                                {autopilotState.message}
+                              </p>
+                            )}
+                            {autopilotState.isPausedForReview && (
+                              <div className="mt-1 p-2 bg-amber-50 border border-amber-200 rounded text-amber-800 font-semibold text-[11px]">
+                                ⚠️ Paused at Final Review. Inspect responses on page and click Submit.
+                              </div>
+                            )}
                           </div>
                         )}
-                      </div>
+                      </>
                     )}
-                  </>
+                  </div>
                 )}
+              </>
+            ) : (
+              <div className="p-6 bg-white rounded-xl border border-dashed border-slate-300 text-center flex flex-col items-center justify-center gap-4 flex-1">
+                <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 text-xl font-bold">
+                  🔍
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">No Job Detected on Current Page</h3>
+                  <p className="text-xs text-slate-500 max-w-[260px] leading-relaxed mt-1">
+                    Open any job posting on Greenhouse, Lever, Workday, LinkedIn, Indeed, or company career sites.
+                  </p>
+                </div>
+
+                {/* Scan Active Tab Button */}
+                <button
+                  onClick={handleScanCurrentTab}
+                  disabled={isScanningTab}
+                  className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow transition-all flex items-center justify-center gap-2 focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                >
+                  <span>{isScanningTab ? '⏳ Inspecting Active Page...' : '⚡ Scan Active Tab for Job'}</span>
+                </button>
+                {scanMessage && (
+                  <span className="text-[11px] font-medium text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
+                    {scanMessage}
+                  </span>
+                )}
+
+                {/* Test Simulator Buttons */}
+                <div className="w-full pt-4 border-t border-slate-100 flex flex-col gap-2">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Or Test Immediately with Demo Jobs
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <button
+                      onClick={() => handleLoadSampleJd('stripe')}
+                      className="p-2.5 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-lg text-left transition-all group"
+                    >
+                      <div className="font-bold text-slate-800 group-hover:text-indigo-600">Stripe</div>
+                      <div className="text-[10px] text-slate-500">Greenhouse • Python, K8s</div>
+                    </button>
+                    <button
+                      onClick={() => handleLoadSampleJd('snowflake')}
+                      className="p-2.5 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-lg text-left transition-all group"
+                    >
+                      <div className="font-bold text-slate-800 group-hover:text-indigo-600">Snowflake</div>
+                      <div className="text-[10px] text-slate-500">Workday • FastAPI, Redis</div>
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => setShowManualJdModal(true)}
+                    className="py-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer"
+                  >
+                    + Paste Custom Job Description
+                  </button>
+                </div>
               </div>
             )}
-          </>
-        ) : (
-          <div className="p-6 bg-white rounded-xl border border-dashed border-slate-300 text-center flex flex-col items-center justify-center gap-4 flex-1">
-            <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 text-xl font-bold">
-              🔍
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">No Job Detected on Current Page</h3>
-              <p className="text-xs text-slate-500 max-w-[260px] leading-relaxed mt-1">
-                Open any job posting on Greenhouse, Lever, Workday, LinkedIn, Indeed, or company career sites.
-              </p>
-            </div>
-
-            {/* Scan Active Tab Button */}
-            <button
-              onClick={handleScanCurrentTab}
-              disabled={isScanningTab}
-              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow transition-all flex items-center justify-center gap-2 focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
-            >
-              <span>{isScanningTab ? '⏳ Inspecting Active Page...' : '⚡ Scan Active Tab for Job'}</span>
-            </button>
-            {scanMessage && (
-              <span className="text-[11px] font-medium text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
-                {scanMessage}
-              </span>
-            )}
-
-            {/* Test Simulator Buttons */}
-            <div className="w-full pt-4 border-t border-slate-100 flex flex-col gap-2">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                Or Test Immediately with Demo Jobs
-              </span>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <button
-                  onClick={() => handleLoadSampleJd('stripe')}
-                  className="p-2.5 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-lg text-left transition-all group"
-                >
-                  <div className="font-bold text-slate-800 group-hover:text-indigo-600">Stripe</div>
-                  <div className="text-[10px] text-slate-500">Greenhouse • Python, K8s</div>
-                </button>
-                <button
-                  onClick={() => handleLoadSampleJd('snowflake')}
-                  className="p-2.5 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-lg text-left transition-all group"
-                >
-                  <div className="font-bold text-slate-800 group-hover:text-indigo-600">Snowflake</div>
-                  <div className="text-[10px] text-slate-500">Workday • FastAPI, Redis</div>
-                </button>
-              </div>
-
-              <button
-                onClick={() => setShowManualJdModal(true)}
-                className="py-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
-              >
-                + Paste Custom Job Description
-              </button>
-            </div>
-          </div>
+          </ErrorBoundary>
         )}
 
         {/* Manual JD Modal */}
@@ -843,6 +1008,9 @@ export default function App() {
       <footer className="p-3 border-t border-slate-200 bg-white text-center text-[11px] text-slate-400">
         RoleSync v2.0 • 4-Layer Guardrail & Single-Page Typst
       </footer>
+
+      {/* Floating Modern In-App Toast Notifications */}
+      <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />
     </div>
   );
 }

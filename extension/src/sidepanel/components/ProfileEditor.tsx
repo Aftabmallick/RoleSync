@@ -136,14 +136,32 @@ const DEFAULT_PROFILE: MasterProfileData = {
     'Senior Software Engineer specializing in scalable architecture, event-driven distributed systems, and high-performance cloud engineering.',
 };
 
+export const BLANK_PROFILE: MasterProfileData = {
+  personal: {
+    full_name: '',
+    email: '',
+    phone: '',
+    location: '',
+    linkedin: '',
+    github: '',
+  },
+  skills: [],
+  experience: [],
+  projects: [],
+  education: [],
+  summary: '',
+};
+
 interface ProfileEditorProps {
   onSave?: (profile: MasterProfileData) => void;
   apiBaseUrl?: string;
+  onToast?: (type: 'success' | 'error' | 'warning' | 'info', message: string, title?: string) => void;
 }
 
 export const ProfileEditor: React.FC<ProfileEditorProps> = ({
   onSave,
   apiBaseUrl = 'http://localhost:8000/api/v1',
+  onToast,
 }) => {
   const [profile, setProfile] = useState<MasterProfileData>(DEFAULT_PROFILE);
   const [newSkill, setNewSkill] = useState<string>('');
@@ -497,11 +515,14 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
           setProfile(parsed);
           setSaveStatus('✓ Master Profile imported from JSON!');
           setTimeout(() => setSaveStatus(null), 3000);
+          if (onToast) onToast('success', 'Master Profile imported from JSON backup.', 'Profile Imported');
         } else {
-          alert('Invalid profile JSON structure.');
+          if (onToast) onToast('error', 'Invalid profile JSON structure.', 'Import Failed');
+          else setSaveStatus('✕ Invalid profile JSON structure');
         }
       } catch (err) {
-        alert('Could not parse JSON file.');
+        if (onToast) onToast('error', 'Could not parse JSON file.', 'Parse Error');
+        else setSaveStatus('✕ Could not parse JSON file');
       }
     };
     reader.readAsText(file);
@@ -509,10 +530,20 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
   };
 
   const handleResetDefault = () => {
-    if (confirm('Reset Master Profile to sample data?')) {
+    if (confirm('Reset Master Profile to sample data (Alex Mercer)?')) {
       setProfile(DEFAULT_PROFILE);
       setSaveStatus('✓ Reset to sample profile');
       setTimeout(() => setSaveStatus(null), 3000);
+      if (onToast) onToast('info', 'Reset Master Profile to demo profile (Alex Mercer).', 'Profile Reset');
+    }
+  };
+
+  const handleClearProfile = () => {
+    if (confirm('Clear entire Master Profile and start with a blank form?')) {
+      setProfile(BLANK_PROFILE);
+      setSaveStatus('✓ Profile cleared');
+      setTimeout(() => setSaveStatus(null), 3000);
+      if (onToast) onToast('info', 'Profile cleared. Enter your details or upload a resume PDF.', 'Blank Profile Started');
     }
   };
 
@@ -627,11 +658,18 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
             Export JSON
           </button>
           <button
-            onClick={handleResetDefault}
-            className="py-1 px-2 text-[10px] font-semibold text-slate-400 hover:text-rose-600 bg-white border border-slate-200 rounded-lg shadow-xs"
-            title="Reset to default sample profile"
+            onClick={handleClearProfile}
+            className="py-1 px-2 text-[10px] font-semibold text-rose-500 hover:text-rose-700 bg-white border border-rose-200 rounded-lg shadow-xs"
+            title="Start with a blank profile"
           >
-            Reset
+            Clear / Start Fresh
+          </button>
+          <button
+            onClick={handleResetDefault}
+            className="py-1 px-2 text-[10px] font-semibold text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded-lg shadow-xs"
+            title="Reset to default sample profile (Alex Mercer)"
+          >
+            Demo Profile
           </button>
           {saveStatus && (
             <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-200">

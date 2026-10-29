@@ -200,6 +200,26 @@ export const ApplicationsTracker: React.FC<ApplicationsTrackerProps> = ({
     }
   };
 
+  const handleExportCsv = () => {
+    if (applications.length === 0) return;
+    const headers = ['Company', 'Role', 'Status', 'ATS Score', 'Applied At', 'URL', 'Notes'];
+    const rows = applications.map((a) => [
+      `"${(a.company_name || '').replace(/"/g, '""')}"`,
+      `"${(a.job_title || '').replace(/"/g, '""')}"`,
+      `"${a.status}"`,
+      `"${a.ats_score}"`,
+      `"${a.applied_at || ''}"`,
+      `"${(a.job_url || '').replace(/"/g, '""')}"`,
+      `"${(a.notes || '').replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `RoleSync_Applications_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.click();
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {/* Metrics Banner */}
@@ -231,6 +251,15 @@ export const ApplicationsTracker: React.FC<ApplicationsTrackerProps> = ({
           onChange={(e) => setSearchQuery(e.target.value)}
           className="flex-1 p-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-1 focus:ring-indigo-500"
         />
+
+        <button
+          onClick={handleExportCsv}
+          disabled={applications.length === 0}
+          className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg border border-slate-200 transition-colors whitespace-nowrap disabled:opacity-40"
+          title="Export applications to CSV spreadsheet"
+        >
+          ⬇ CSV
+        </button>
 
         <button
           onClick={() => setShowAddModal(true)}
