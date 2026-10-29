@@ -9,11 +9,13 @@
 1. [What is RoleSync?](#what-is-rolesync)
 2. [Quick 3-Minute Setup](#quick-3-minute-setup)
 3. [How to Apply for a Job with RoleSync](#how-to-apply-for-a-job-with-rolesync)
-4. [Understanding Your ATS Match Score](#understanding-your-ats-match-score)
+4. [Understanding Your ATS Match Score & Diff Viewer](#understanding-your-ats-match-score--diff-viewer)
 5. [The Two Ways to Apply: Copilot vs. Autopilot](#the-two-ways-to-apply-copilot-vs-autopilot)
-6. [Reaching Out to Hiring Managers](#reaching-out-to-hiring-managers)
-7. [Frequently Asked Questions](#frequently-asked-questions)
-8. [Tips for the Best Results](#tips-for-the-best-results)
+6. [Generating Tailored Cover Letters](#generating-tailored-cover-letters)
+7. [Tracking Applications & Pipeline Management](#tracking-applications--pipeline-management)
+8. [Reaching Out to Hiring Managers](#reaching-out-to-hiring-managers)
+9. [Frequently Asked Questions](#frequently-asked-questions)
+10. [Tips for the Best Results](#tips-for-the-best-results)
 
 ---
 
@@ -122,7 +124,34 @@ RoleSync gives you two ways to work, depending on how much control you want:
 
 ---
 
-## 6. Reaching Out to Hiring Managers
+## 6. Generating Tailored Cover Letters
+
+Many employers request a cover letter alongside your resume. RoleSync generates a personalized, authentic cover letter in seconds:
+1. **Choose Your Tone**: Select *Professional*, *Confident*, or *Enthusiastic*.
+2. **Click "Generate"**: RoleSync matches your authentic career achievements to the company's job description.
+3. **Edit Freely**: Tweak any sentence directly in the text editor.
+4. **1-Click Actions**:
+   - **Autofill into Form**: Types the cover letter straight into the company's application form textarea.
+   - **Copy**: Copies the text to your clipboard.
+   - **Download .txt**: Saves a local text file copy.
+
+---
+
+## 7. Tracking Applications & Pipeline Management
+
+RoleSync includes a built-in **Applications Tracker** so you never lose track of where you've applied:
+- **Instant Save**: After tailoring or autofilling any job, click **"+ Save to Tracker"**.
+- **Applications Tab**: View your overall metrics:
+  - Total jobs applied
+  - Active interviews
+  - Offers received
+  - Average ATS match score across your pipeline
+- **Stage Management**: Update application statuses (`Draft` $\rightarrow$ `Applied` $\rightarrow$ `Interviewing` $\rightarrow$ `Offered` $\rightarrow$ `Rejected`) with 1 click.
+- **Custom Notes**: Keep track of recruiter interview dates, referrals, and follow-ups.
+
+---
+
+## 8. Reaching Out to Hiring Managers
 
 Applying online is only half the battle. Reaching out directly to the person hiring can 10x your interview rate. RoleSync makes this effortless and polite:
 
@@ -138,7 +167,7 @@ Applying online is only half the battle. Reaching out directly to the person hir
 
 ---
 
-## 7. Frequently Asked Questions
+## 9. Frequently Asked Questions
 
 #### Q: Does RoleSync lie or make up fake experience on my resume?
 **No. Absolutely not.** RoleSync has strict anti-hallucination guardrails built into its core. It will only re-phrase, re-order, and highlight real achievements that are already in your Master Profile. If you have never worked with a tool, RoleSync will never add it to your resume.
@@ -157,7 +186,7 @@ RoleSync works on **LinkedIn**, **Greenhouse**, **Lever**, **Workday**, **iCIMS*
 
 ---
 
-## 8. Tips for the Best Results
+## 10. Tips for the Best Results
 
 1. **Be Thorough in Your Master Profile**: The more detail, numbers, and genuine accomplishments you put into your Master Profile initially, the better RoleSync can tailor your resume for diverse roles.
 2. **Include Measurable Outcomes**: When writing your past bullet points, include real numbers where possible (e.g., *"increased sales by 25%"*, *"managed a team of 4"*, *"reduced page load time by 1.2s"*). RoleSync will use these exact figures to make you stand out.

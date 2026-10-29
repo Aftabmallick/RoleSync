@@ -6,6 +6,9 @@ export type MessageAction =
   | 'TAILORING_COMPLETED'
   | 'EXECUTE_DOM_AUTOFILL'
   | 'AUTOFILL_PROGRESS'
+  | 'EXECUTE_AUTOPILOT'
+  | 'AUTOPILOT_PROGRESS'
+  | 'AUTOFILL_COVER_LETTER'
   | 'AUTH_STATE_CHANGED'
   | 'DISPATCH_ERROR';
 
@@ -33,6 +36,16 @@ export type AutofillProgressPayload = {
   status: 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED';
 };
 
+export type AutopilotProgressPayload = {
+  taskId: string;
+  stage: string;
+  fieldsCompleted: number;
+  fieldsFailed: number;
+  nextStageReady: boolean;
+  message: string;
+  isPausedForReview?: boolean;
+};
+
 export type TailoringProgressPayload = {
   taskId: string;
   stage: 'PARSING' | 'TAILORING' | 'GUARDRAIL_VERIFY' | 'TYPST_COMPILING' | 'COMPLETED';
@@ -43,7 +56,9 @@ export type TailoringProgressPayload = {
 export type AppExtensionMessage =
   | BaseExtensionMessage<'JD_EXTRACTED', JDExtractedPayload>
   | BaseExtensionMessage<'AUTOFILL_PROGRESS', AutofillProgressPayload>
+  | BaseExtensionMessage<'AUTOPILOT_PROGRESS', AutopilotProgressPayload>
   | BaseExtensionMessage<'TAILORING_PROGRESS', TailoringProgressPayload>
   | BaseExtensionMessage<'TRIGGER_TAILORING', { jobId?: string; customInstructions?: string }>
-  | BaseExtensionMessage<'EXECUTE_DOM_AUTOFILL', { mappings: any[]; resumeDataUri?: string }>;
-
+  | BaseExtensionMessage<'EXECUTE_DOM_AUTOFILL', { mappings?: any[]; resumeDataUri?: string; candidateProfile?: any }>
+  | BaseExtensionMessage<'EXECUTE_AUTOPILOT', { candidateProfile?: any; resumeDataUri?: string; autoAdvance?: boolean }>
+  | BaseExtensionMessage<'AUTOFILL_COVER_LETTER', { coverLetterText: string }>;

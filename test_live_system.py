@@ -203,6 +203,86 @@ async def main():
     print(f"          • Matched Skills:      {score['matched_skills']}")
     print(f"  PASS -> Typst Vector PDF: {len(pdf_base64)} base64 chars (~{len(pdf_base64)*3//4} bytes)")
 
+    # 10. Recruiter Discovery & Email Verification
+    print("\n10. Testing POST /api/v1/outreach/discover & /verify...")
+    status, disc_res = make_request(
+        "/api/v1/outreach/discover",
+        method="POST",
+        body={
+            "company_name": "Stripe",
+            "role_title": "Senior Infrastructure Engineer",
+            "department": "Engineering"
+        }
+    )
+    assert status == 200, f"Expected 200, got {status}: {disc_res}"
+    recruiters = disc_res.get("recruiters", [])
+    assert len(recruiters) > 0, "Expected at least 1 recruiter"
+    first_recruiter = recruiters[0]
+    print(f"  PASS -> Discovered {len(recruiters)} recruiters at Stripe. First: {first_recruiter['full_name']} ({first_recruiter['title']})")
+
+    status, ver_res = make_request(
+        "/api/v1/outreach/verify",
+        method="POST",
+        body={"email": first_recruiter["email"]}
+    )
+    assert status == 200, f"Expected 200, got {status}: {ver_res}"
+    print(f"  PASS -> Email {first_recruiter['email']} verified: status={ver_res.get('status')}, confidence={ver_res.get('confidence_score')}%")
+
+    # 11. Tailored Cover Letter Synthesis
+    print("\n11. Testing POST /api/v1/cover-letter/synthesize...")
+    status, cl_res = make_request(
+        "/api/v1/cover-letter/synthesize",
+        method="POST",
+        body={
+            "target_role": "Senior Infrastructure Engineer",
+            "company_name": "Stripe",
+            "raw_job_description": raw_jd,
+            "candidate_name": "Alex Mercer",
+            "tone": "confident"
+        }
+    )
+    assert status == 200, f"Expected 200, got {status}: {cl_res}"
+    assert "Stripe" in cl_res["full_text"]
+    assert cl_res["word_count"] > 100
+    print(f"  PASS -> Tailored Cover Letter synthesized ({cl_res['word_count']} words, tone=confident)")
+
+    # 12. Application Tracker Lifecycle
+    print("\n12. Testing Application Tracker Lifecycle (/api/v1/applications)...")
+    status, app_res = make_request(
+        "/api/v1/applications",
+        method="POST",
+        body={
+            "company_name": "Stripe",
+            "job_title": "Senior Infrastructure Engineer",
+            "job_url": "https://boards.greenhouse.io/stripe/jobs/sample",
+            "ats_provider": "GREENHOUSE",
+            "ats_score": score["composite_score"],
+            "status": "APPLIED",
+            "notes": "Submitted with single-page Typst resume and tailored cover letter."
+        }
+    )
+    assert status == 201, f"Expected 201 Created, got {status}: {app_res}"
+    live_app_id = app_res["id"]
+    print(f"  PASS -> Created tracked application: ID={live_app_id}, Status={app_res['status']}")
+
+    status, list_res = make_request("/api/v1/applications", method="GET")
+    assert status == 200, f"Expected 200, got {status}: {list_res}"
+    assert list_res["total"] >= 1
+    print(f"  PASS -> Retrieved pipeline applications: total={list_res['total']}")
+
+    status, patch_res = make_request(
+        f"/api/v1/applications/{live_app_id}",
+        method="PATCH",
+        body={"status": "INTERVIEWING", "notes": "Technical screening call scheduled."}
+    )
+    assert status == 200, f"Expected 200, got {status}: {patch_res}"
+    assert patch_res["status"] == "INTERVIEWING"
+    print(f"  PASS -> Updated application status to INTERVIEWING")
+
+    status, del_res = make_request(f"/api/v1/applications/{live_app_id}", method="DELETE")
+    assert status == 204 or status == 200, f"Expected 204/200, got {status}"
+    print(f"  PASS -> Deleted application from pipeline successfully")
+
     print("\n==================================================")
     print("     ALL LIVE SYSTEM TESTS PASSED SUCCESSFULLY!   ")
     print("==================================================")

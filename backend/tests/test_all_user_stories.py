@@ -542,6 +542,104 @@ class TestAllUserStories(unittest.TestCase):
             pong = ws.receive_text()
             self.assertEqual(pong, "PONG")
 
+    # =========================================================================
+    # USER STORY 11: Application Tracking Pipeline & Lifecycle Management
+    # =========================================================================
+    def test_user_story_11_application_tracking_lifecycle(self):
+        """
+        GIVEN an applied or tailored job position
+        WHEN candidate saves it to their Application Tracker
+        THEN the application is recorded with ATS match score and provider
+        AND candidate can update status (DRAFT -> APPLIED -> INTERVIEWING -> OFFERED)
+        AND candidate notes and filter queries persist accurately.
+        """
+        create_payload = {
+            "company_name": "Datadog",
+            "job_title": "Senior Reliability Engineer",
+            "job_url": "https://careers.datadoghq.com/detail/123",
+            "ats_provider": "GREENHOUSE",
+            "ats_score": 91.5,
+            "status": "APPLIED",
+            "notes": "Met recruiter at Tech Summit; submitted tailored resume.",
+            "tailored_summary": "SRE specializing in multi-region Kubernetes and low-latency microservices."
+        }
+
+        # 1. Create application
+        res = self.client.post("/api/v1/applications", json=create_payload)
+        self.assertEqual(res.status_code, 201)
+        data = res.json()
+        app_id = data["id"]
+        self.assertEqual(data["company_name"], "Datadog")
+        self.assertEqual(data["status"], "APPLIED")
+        self.assertEqual(data["ats_score"], 91.5)
+
+        # 2. List applications
+        res_list = self.client.get("/api/v1/applications")
+        self.assertEqual(res_list.status_code, 200)
+        list_data = res_list.json()
+        self.assertGreaterEqual(list_data["total"], 1)
+        found = [a for a in list_data["applications"] if a["id"] == app_id]
+        self.assertTrue(len(found) == 1)
+
+        # 3. Update status to INTERVIEWING
+        patch_res = self.client.patch(f"/api/v1/applications/{app_id}", json={
+            "status": "INTERVIEWING",
+            "notes": "Recruiter screen scheduled for Friday 2 PM."
+        })
+        self.assertEqual(patch_res.status_code, 200)
+        self.assertEqual(patch_res.json()["status"], "INTERVIEWING")
+        self.assertIn("Friday 2 PM", patch_res.json()["notes"])
+
+        # 4. Advance status to OFFERED
+        offer_res = self.client.patch(f"/api/v1/applications/{app_id}", json={
+            "status": "OFFERED"
+        })
+        self.assertEqual(offer_res.status_code, 200)
+        self.assertEqual(offer_res.json()["status"], "OFFERED")
+
+        # 5. Clean up
+        del_res = self.client.delete(f"/api/v1/applications/{app_id}")
+        self.assertEqual(del_res.status_code, 204)
+
+    # =========================================================================
+    # USER STORY 12: Context-Aware Cover Letter Synthesis with Multi-Tone Selection
+    # =========================================================================
+    def test_user_story_12_cover_letter_synthesis(self):
+        """
+        GIVEN a target job posting and candidate Master Profile
+        WHEN candidate requests a tailored cover letter across different tones
+        THEN the synthesized letter highlights matching technical competencies
+        AND includes authentic quantitative metrics from their Master Vault
+        AND strictly avoids fabricating experiences or unlisted companies.
+        """
+        req_payload = {
+            "target_role": "Staff Infrastructure Engineer",
+            "company_name": "Cloudflare",
+            "raw_job_description": "Seeking a Staff Engineer skilled in Python, Kubernetes, Redis, Docker, and AWS to scale distributed edge networks.",
+            "candidate_name": "Marcus Vance",
+            "candidate_summary": self.master_profile["summary"],
+            "master_profile": self.master_profile,
+            "tone": "confident"
+        }
+
+        res = self.client.post("/api/v1/cover-letter/synthesize", json=req_payload)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+
+        self.assertEqual(data["company_name"], "Cloudflare")
+        self.assertEqual(data["target_role"], "Staff Infrastructure Engineer")
+        self.assertEqual(data["candidate_name"], "Marcus Vance")
+        self.assertIn("Cloudflare", data["full_text"])
+        self.assertIn("Kubernetes", data["full_text"])
+        self.assertGreater(data["word_count"], 120)
+        self.assertTrue(len(data["body_paragraphs"]) >= 2)
+
+        # Test enthusiastic tone
+        req_payload["tone"] = "enthusiastic"
+        res_enth = self.client.post("/api/v1/cover-letter/synthesize", json=req_payload)
+        self.assertEqual(res_enth.status_code, 200)
+        self.assertIn("thrilled", res_enth.json()["opening_paragraph"].lower())
+
 
 if __name__ == "__main__":
     unittest.main()

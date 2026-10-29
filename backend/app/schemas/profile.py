@@ -85,6 +85,14 @@ class SkillItem(BaseModel):
     category: Optional[str] = Field("General", description="Category (e.g. Languages, Databases)")
 
 
+class Preferences(BaseModel):
+    legally_authorized: Optional[bool] = Field(True, description="Legally authorized to work in target country")
+    requires_sponsorship: Optional[bool] = Field(False, description="Requires visa sponsorship now or in the future")
+    gender: Optional[str] = Field("", description="EEO Gender disclosure")
+    veteran_status: Optional[str] = Field("", description="EEO Veteran status")
+    disability_status: Optional[str] = Field("", description="EEO Disability status")
+
+
 class MasterProfilePayload(BaseModel):
     personal: PersonalInfo
     skills: List[SkillItem] = Field(default_factory=list)
@@ -92,6 +100,7 @@ class MasterProfilePayload(BaseModel):
     projects: List[ProjectItem] = Field(default_factory=list, description="Personal or featured technical projects")
     education: List[EducationItem] = Field(default_factory=list)
     summary: Optional[str] = Field("", description="Candidate master bio / summary")
+    preferences: Optional[Preferences] = Field(default_factory=Preferences, description="Work auth & EEO preferences")
 
 
 class MasterProfileResponse(BaseModel):

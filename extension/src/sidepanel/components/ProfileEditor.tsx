@@ -46,6 +46,14 @@ export interface ProjectItem {
   bullets: BulletPoint[];
 }
 
+export interface PreferencesData {
+  legally_authorized?: boolean;
+  requires_sponsorship?: boolean;
+  gender?: string;
+  veteran_status?: string;
+  disability_status?: string;
+}
+
 export interface MasterProfileData {
   personal: PersonalInfo;
   skills: SkillItem[];
@@ -53,6 +61,7 @@ export interface MasterProfileData {
   projects?: ProjectItem[];
   education: EducationItem[];
   summary: string;
+  preferences?: PreferencesData;
 }
 
 const DEFAULT_PROFILE: MasterProfileData = {
@@ -63,6 +72,13 @@ const DEFAULT_PROFILE: MasterProfileData = {
     location: 'San Francisco, CA',
     linkedin: 'linkedin.com/in/alex-mercer',
     github: 'github.com/alexmercer',
+  },
+  preferences: {
+    legally_authorized: true,
+    requires_sponsorship: false,
+    gender: 'Decline to self-identify',
+    veteran_status: 'I am not a protected veteran',
+    disability_status: 'No, I do not have a disability',
   },
   skills: [
     { name: 'Python', category: 'Languages' },
@@ -140,6 +156,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
   const [showPasteText, setShowPasteText] = useState<boolean>(false);
   const [pastedResumeText, setPastedResumeText] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const jsonInputRef = useRef<HTMLInputElement>(null);
 
   // New experience form states
   const [expCompany, setExpCompany] = useState<string>('');
@@ -469,6 +486,36 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
     downloadAnchor.click();
   };
 
+  const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        if (parsed.personal && parsed.skills) {
+          setProfile(parsed);
+          setSaveStatus('✓ Master Profile imported from JSON!');
+          setTimeout(() => setSaveStatus(null), 3000);
+        } else {
+          alert('Invalid profile JSON structure.');
+        }
+      } catch (err) {
+        alert('Could not parse JSON file.');
+      }
+    };
+    reader.readAsText(file);
+    if (jsonInputRef.current) jsonInputRef.current.value = '';
+  };
+
+  const handleResetDefault = () => {
+    if (confirm('Reset Master Profile to sample data?')) {
+      setProfile(DEFAULT_PROFILE);
+      setSaveStatus('✓ Reset to sample profile');
+      setTimeout(() => setSaveStatus(null), 3000);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4 text-slate-800 pb-8">
       {/* Vault Header Banner */}
@@ -553,17 +600,38 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
         <button
           onClick={handleSaveVault}
           disabled={isSaving}
-          className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow transition-all focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 flex items-center gap-1.5"
+          className="py-2 px-3.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 flex items-center gap-1.5"
         >
           <span>{isSaving ? 'Encrypting...' : 'Save & Encrypt Vault'}</span>
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <input
+            type="file"
+            ref={jsonInputRef}
+            accept=".json"
+            onChange={handleImportJson}
+            className="hidden"
+          />
+          <button
+            onClick={() => jsonInputRef.current?.click()}
+            className="py-1 px-2 text-[10px] font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-lg shadow-xs"
+            title="Import JSON backup"
+          >
+            Import JSON
+          </button>
           <button
             onClick={handleExportJson}
-            className="py-1.5 px-2.5 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-lg shadow-sm"
+            className="py-1 px-2 text-[10px] font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-lg shadow-xs"
             title="Download JSON backup"
           >
             Export JSON
+          </button>
+          <button
+            onClick={handleResetDefault}
+            className="py-1 px-2 text-[10px] font-semibold text-slate-400 hover:text-rose-600 bg-white border border-slate-200 rounded-lg shadow-xs"
+            title="Reset to default sample profile"
+          >
+            Reset
           </button>
           {saveStatus && (
             <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
@@ -1073,6 +1141,149 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
           >
             Add Education Entry
           </button>
+        </div>
+      </div>
+
+      {/* 7. Work Authorization & Screening Preferences */}
+      <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3">
+        <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+          7. Work Authorization & Screening Preferences
+        </h3>
+        <p className="text-[11px] text-slate-500">
+          Used by Autopilot and 1-Click Autofill to answer standard application questions accurately.
+        </p>
+
+        <div className="grid grid-cols-1 gap-2.5 text-xs">
+          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
+            <div>
+              <span className="font-semibold text-slate-800">Legally authorized to work in target country?</span>
+              <p className="text-[10px] text-slate-500">Common screening question on Workday, Greenhouse & Lever</p>
+            </div>
+            <div className="flex gap-2">
+              <label className="flex items-center gap-1 text-[11px] font-medium cursor-pointer">
+                <input
+                  type="radio"
+                  name="legally_authorized"
+                  checked={profile.preferences?.legally_authorized !== false}
+                  onChange={() =>
+                    setProfile({
+                      ...profile,
+                      preferences: { ...profile.preferences, legally_authorized: true },
+                    })
+                  }
+                />
+                Yes
+              </label>
+              <label className="flex items-center gap-1 text-[11px] font-medium cursor-pointer">
+                <input
+                  type="radio"
+                  name="legally_authorized"
+                  checked={profile.preferences?.legally_authorized === false}
+                  onChange={() =>
+                    setProfile({
+                      ...profile,
+                      preferences: { ...profile.preferences, legally_authorized: false },
+                    })
+                  }
+                />
+                No
+              </label>
+            </div>
+          </div>
+
+          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
+            <div>
+              <span className="font-semibold text-slate-800">Requires visa sponsorship now or in the future?</span>
+              <p className="text-[10px] text-slate-500">H-1B, TN, O-1 or other employment visa sponsorship</p>
+            </div>
+            <div className="flex gap-2">
+              <label className="flex items-center gap-1 text-[11px] font-medium cursor-pointer">
+                <input
+                  type="radio"
+                  name="requires_sponsorship"
+                  checked={profile.preferences?.requires_sponsorship === true}
+                  onChange={() =>
+                    setProfile({
+                      ...profile,
+                      preferences: { ...profile.preferences, requires_sponsorship: true },
+                    })
+                  }
+                />
+                Yes
+              </label>
+              <label className="flex items-center gap-1 text-[11px] font-medium cursor-pointer">
+                <input
+                  type="radio"
+                  name="requires_sponsorship"
+                  checked={profile.preferences?.requires_sponsorship !== true}
+                  onChange={() =>
+                    setProfile({
+                      ...profile,
+                      preferences: { ...profile.preferences, requires_sponsorship: false },
+                    })
+                  }
+                />
+                No
+              </label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">EEO Gender</label>
+              <select
+                value={profile.preferences?.gender || 'Decline to self-identify'}
+                onChange={(e) =>
+                  setProfile({
+                    ...profile,
+                    preferences: { ...profile.preferences, gender: e.target.value },
+                  })
+                }
+                className="w-full p-1.5 border border-slate-300 rounded text-xs bg-white"
+              >
+                <option value="Decline to self-identify">Decline to state</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Non-Binary">Non-Binary</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Veteran Status</label>
+              <select
+                value={profile.preferences?.veteran_status || 'I am not a protected veteran'}
+                onChange={(e) =>
+                  setProfile({
+                    ...profile,
+                    preferences: { ...profile.preferences, veteran_status: e.target.value },
+                  })
+                }
+                className="w-full p-1.5 border border-slate-300 rounded text-xs bg-white"
+              >
+                <option value="I am not a protected veteran">Not a veteran</option>
+                <option value="I identify as a protected veteran">Protected veteran</option>
+                <option value="I decline to self-identify">Decline to state</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Disability Status</label>
+              <select
+                value={profile.preferences?.disability_status || 'No, I do not have a disability'}
+                onChange={(e) =>
+                  setProfile({
+                    ...profile,
+                    preferences: { ...profile.preferences, disability_status: e.target.value },
+                  })
+                }
+                className="w-full p-1.5 border border-slate-300 rounded text-xs bg-white"
+              >
+                <option value="No, I do not have a disability">No disability</option>
+                <option value="Yes, I have a disability">Yes, disability</option>
+                <option value="I decline to self-identify">Decline to state</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
     </div>

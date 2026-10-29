@@ -81,8 +81,22 @@ export class DOMAutofillEngine {
      * Synthesizes a FileList using the DataTransfer API to safely attach
      * binary PDF blobs to standard file inputs.
      */
-    const res = await fetch(dataUri);
-    const blob = await res.blob();
+    let blob: Blob;
+    try {
+      const base64Data = dataUri.includes(',') ? dataUri.split(',')[1] : dataUri;
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      blob = new Blob([byteArray], { type: 'application/pdf' });
+    } catch (e) {
+      const url = dataUri.startsWith('data:') ? dataUri : `data:application/pdf;base64,${dataUri}`;
+      const res = await fetch(url);
+      blob = await res.blob();
+    }
+
     const file = new File([blob], fileName, {
       type: 'application/pdf',
       lastModified: Date.now()
