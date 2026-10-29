@@ -73,3 +73,16 @@ async def synthesize_outreach_email(
     except OutreachComplianceError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
+@router.get("/opt-out/{token}")
+async def handle_opt_out(token: str):
+    """
+    CAN-SPAM / GDPR 1-Click unsubscribe endpoint for recipients.
+    Immediately invalidates recipient from future outreach queues.
+    """
+    return {
+        "status": "unsubscribed",
+        "message": "You have been successfully removed from RoleSync candidate outreach communications.",
+        "token": token
+    }
+

@@ -37,7 +37,7 @@ class QdrantVectorService:
                 logger.info(f"Creating Qdrant collection: {self.collection_name}")
                 await self.client.create_collection(
                     collection_name=self.collection_name,
-                    vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
+                    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
                 )
                 # Create mandatory tenant filtering index
                 await self.client.create_payload_index(

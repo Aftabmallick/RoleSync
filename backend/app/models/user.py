@@ -24,3 +24,4 @@ class User(Base):
     master_profiles: Mapped[List["MasterProfile"]] = relationship("MasterProfile", back_populates="user", cascade="all, delete-orphan")
     applications: Mapped[List["Application"]] = relationship("Application", back_populates="user", cascade="all, delete-orphan")
     refresh_tokens: Mapped[List["RefreshToken"]] = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    resume_versions: Mapped[List["ResumeVersion"]] = relationship("ResumeVersion", back_populates="user", cascade="all, delete-orphan")

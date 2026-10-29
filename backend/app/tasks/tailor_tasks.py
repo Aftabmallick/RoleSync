@@ -15,6 +15,7 @@ from app.services.guardrails import (
 )
 from app.services.scoring_engine import ATSScoringEngine
 from app.services.typst_compiler import TypstCompilerService
+from app.services.llm_client import LLMClientService
 
 logger = logging.getLogger(__name__)
 
@@ -140,12 +141,25 @@ class TailorPipelineOrchestrator:
                 try:
                     tailored_experience = []
                     for exp in master_profile.get("experience", []):
+                        raw_bullets = [
+                            {"id": b.get("id", f"b_{idx}"), "text": b.get("text", "")}
+                            for idx, b in enumerate(exp.get("bullets", []))
+                        ]
+                        rewritten = LLMClientService.rewrite_bullets(
+                            target_role=target_role,
+                            company_name=company_name,
+                            required_keywords=list(jd_skills),
+                            original_bullets=raw_bullets
+                        )
+                        rewritten_map = {item["id"]: item["text"] for item in rewritten}
+
                         tailored_bullets = []
-                        for b in exp.get("bullets", []):
-                            b_text = b["text"]
+                        for b in raw_bullets:
+                            b_id = b["id"]
+                            b_text = rewritten_map.get(b_id, b["text"])
                             tailored_bullets.append(
                                 TailoredBulletPoint(
-                                    original_bullet_id=b["id"],
+                                    original_bullet_id=b_id,
                                     tailored_text=b_text,
                                     keywords_emphasized=[
                                         k for k in jd_skills

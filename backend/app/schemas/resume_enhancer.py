@@ -67,3 +67,4 @@ class ResumeVersionItem(BaseModel):
 class ResumeVersionListResponse(BaseModel):
     total: int
     versions: List[ResumeVersionItem]
+

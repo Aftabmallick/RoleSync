@@ -72,3 +72,4 @@ async def delete_resume_version(
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Version '{version_id}' not found.")
     return None
+

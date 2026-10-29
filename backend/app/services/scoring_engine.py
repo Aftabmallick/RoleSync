@@ -4,6 +4,7 @@ from typing import Set, Dict, Any, List, Optional
 import numpy as np
 from collections import Counter
 from app.services.taxonomy import normalize_skill
+from app.services.embedding_service import EmbeddingService
 
 
 class ATSScoringEngine:
@@ -41,19 +42,15 @@ class ATSScoringEngine:
             3. Sublinear TF Lexical Match (w3 = 0.15)
             4. Seniority & Experience Curve (w4 = 0.20)
         """
-        # 1. Cosine Semantic Similarity
+        # 1. Cosine Semantic Similarity via Dense Vector Embeddings
+        if resume_embedding is None and resume_text:
+            resume_embedding = EmbeddingService.embed_text(resume_text)
+        if jd_embedding is None and jd_text:
+            jd_embedding = EmbeddingService.embed_text(jd_text)
+
         if resume_embedding is not None and jd_embedding is not None:
-            norm_res = np.linalg.norm(resume_embedding)
-            norm_jd = np.linalg.norm(jd_embedding)
-            if norm_res > 0 and norm_jd > 0:
-                dot_prod = float(np.dot(resume_embedding, jd_embedding))
-                cos_sim = dot_prod / (norm_res * norm_jd)
-                # Normalize cosine to [0, 1] range
-                cos_sim_norm = max(0.0, min(1.0, (cos_sim + 1.0) / 2.0 if cos_sim < 0 else cos_sim))
-            else:
-                cos_sim_norm = 0.5
+            cos_sim_norm = EmbeddingService.compute_cosine_similarity(resume_embedding, jd_embedding)
         else:
-            # Fallback when embeddings are not supplied
             cos_sim_norm = cls._calculate_jaccard_fallback(resume_text, jd_text)
 
         # 2. Hard Skill Overlap (Normalized via Canonical Taxonomy)
