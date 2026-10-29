@@ -1,0 +1,99 @@
+name: RoleSync CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-tests:
+    name: Backend Unit & Integration Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install Typst standalone binary
+        run: |
+          curl -fsSL https://github.com/typst/typst/releases/download/v0.11.1/typst-x86_64-unknown-linux-musl.tar.xz | \
+          tar -xJ --strip-components=1 -C /usr/local/bin typst-x86_64-unknown-linux-musl/typst
+          chmod +x /usr/local/bin/typst
+          typst --version
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Python unit tests
+        run: |
+          cd backend
+          PYTHONPATH=. python -m unittest discover -s tests -p "test_*.py"
+
+  extension-build:
+    name: Chrome Extension Build & Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install extension dependencies
+        run: |
+          cd extension
+          npm install
+
+      - name: Build extension bundle
+        run: |
+          cd extension
+          npm run build
+
+      - name: Create extension distribution zip
+        run: |
+          cd extension/dist
+          zip -r ../../rolesync-extension-v2.0.0.zip .
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rolesync-extension-v2.0.0
+          path: rolesync-extension-v2.0.0.zip
+          retention-days: 14
+
+  docker-build:
+    name: Docker Multi-Stage Build Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: rolesync-api:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
