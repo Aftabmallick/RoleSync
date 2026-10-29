@@ -46,3 +46,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP POLICY IF EXISTS resume_versions_tenant_isolation ON resume_versions;")
     op.drop_table('resume_versions')
+

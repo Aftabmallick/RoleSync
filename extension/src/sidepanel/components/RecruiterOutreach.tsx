@@ -234,10 +234,19 @@ export const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
 
       {/* Selected Recruiter Editor & Verification */}
       <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col gap-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+            Hiring Contact Details:
+          </span>
+          <span className="text-[10px] text-slate-400">
+            Select discovered contact or paste from LinkedIn
+          </span>
+        </div>
+
         <div className="grid grid-cols-2 gap-2">
           <input
             type="text"
-            placeholder="Recruiter Name (e.g. Sarah Chen)"
+            placeholder="Recruiter Name (e.g. Hiring Lead)"
             value={recruiterName}
             onChange={(e) => setRecruiterName(e.target.value)}
             className="p-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-1 focus:ring-indigo-500"
