@@ -188,9 +188,19 @@ export const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
       {/* Recruiter list results */}
       {recruiters.length > 0 && (
         <div className="flex flex-col gap-1.5 p-2 bg-slate-50 rounded-lg border border-slate-200">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">
-            Discovered at {companyName}:
-          </span>
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              Discovered at {companyName}:
+            </span>
+            <a
+              href={`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(`recruiter ${companyName}`)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold"
+            >
+              Search All on LinkedIn ↗
+            </a>
+          </div>
           <div className="grid grid-cols-1 gap-1.5">
             {recruiters.map((rec, i) => {
               const isSelected = rec.email === recruiterEmail;
@@ -219,7 +229,7 @@ export const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
                         target="_blank"
                         rel="noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="text-[9px] text-slate-400 hover:text-indigo-600"
+                        className="text-[9px] font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50/70 px-1.5 py-0.5 rounded border border-indigo-100"
                       >
                         LinkedIn ↗
                       </a>

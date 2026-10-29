@@ -3,6 +3,7 @@ import hmac
 import re
 import secrets
 import time
+import urllib.parse
 from typing import Dict, List, Optional, Tuple
 
 from app.schemas.outreach import (
@@ -103,6 +104,10 @@ class OutreachService:
             if not has_active_mx:
                 conf = max(40.0, conf - 30.0)
 
+            # Direct targeted LinkedIn people search (guaranteed valid URL, never 404s)
+            search_query = urllib.parse.quote(f"{first} {last} {clean_company}")
+            linkedin_url = f"https://www.linkedin.com/search/results/people/?keywords={search_query}"
+
             recruiters.append(
                 RecruiterContact(
                     first_name=first,
@@ -112,7 +117,7 @@ class OutreachService:
                     title=title,
                     confidence_score=round(conf, 1),
                     verification_status=v_res.get("status", "valid"),
-                    linkedin_url=f"https://www.linkedin.com/in/{first.lower()}{last.lower()}-{slug}",
+                    linkedin_url=linkedin_url,
                 )
             )
 
@@ -236,8 +241,9 @@ class OutreachService:
                         last = tokens[-1].capitalize()
                         uddg = re.search(r"uddg=([^&]+)", link)
                         real_url = urllib.parse.unquote(uddg.group(1)) if uddg else str(link)
-                        if not real_url.startswith("http"):
-                            real_url = f"https://www.linkedin.com/in/{first.lower()}{last.lower()}"
+                        if "linkedin.com/in/" not in real_url or real_url.endswith("/in/") or real_url.endswith("/in"):
+                            q = urllib.parse.quote(f"{first} {last} {company_name}")
+                            real_url = f"https://www.linkedin.com/search/results/people/?keywords={q}"
 
                         email = f"{first.lower()}.{last.lower()}@{domain}"
                         v_res = EmailDeliverabilityService.verify_email(email)
