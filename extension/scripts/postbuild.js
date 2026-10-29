@@ -24,19 +24,29 @@ if (fs.existsSync(srcSidepanelDir)) {
   console.log('[RoleSync Build] Generated dist/sidepanel/index.html with relative asset paths (../assets/)');
 }
 
-// 2. Mirror dist/assets to extensionRoot/assets so absolute /assets/ requests resolve under extension root
+// 2. Mirror dist/assets to extensionRoot/assets and ensure pdf.worker is present
 const distAssetsDir = path.resolve(distDir, 'assets');
 const rootAssetsDir = path.resolve(extensionRoot, 'assets');
 
-if (fs.existsSync(distAssetsDir)) {
-  if (!fs.existsSync(rootAssetsDir)) {
-    fs.mkdirSync(rootAssetsDir, { recursive: true });
-  }
-  for (const file of fs.readdirSync(distAssetsDir)) {
-    fs.copyFileSync(path.resolve(distAssetsDir, file), path.resolve(rootAssetsDir, file));
-  }
-  console.log('[RoleSync Build] Mirrored assets to extension/assets/');
+if (!fs.existsSync(distAssetsDir)) {
+  fs.mkdirSync(distAssetsDir, { recursive: true });
 }
+if (!fs.existsSync(rootAssetsDir)) {
+  fs.mkdirSync(rootAssetsDir, { recursive: true });
+}
+
+// Copy pdfjs-dist worker to both asset directories
+const pdfWorkerSrc = path.resolve(extensionRoot, 'node_modules', 'pdfjs-dist', 'build', 'pdf.worker.min.mjs');
+if (fs.existsSync(pdfWorkerSrc)) {
+  fs.copyFileSync(pdfWorkerSrc, path.resolve(distAssetsDir, 'pdf.worker.min.mjs'));
+  fs.copyFileSync(pdfWorkerSrc, path.resolve(rootAssetsDir, 'pdf.worker.min.mjs'));
+  console.log('[RoleSync Build] Copied pdf.worker.min.mjs to assets/');
+}
+
+for (const file of fs.readdirSync(distAssetsDir)) {
+  fs.copyFileSync(path.resolve(distAssetsDir, file), path.resolve(rootAssetsDir, file));
+}
+console.log('[RoleSync Build] Mirrored assets to extension/assets/');
 
 // 3. Create placeholder logo.png and isolated.css to satisfy web_accessible_resources
 const base64Png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';

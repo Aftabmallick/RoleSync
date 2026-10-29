@@ -41,7 +41,11 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["assets/logo.png", "dist/content/isolated.css"],
+      "resources": [
+        "assets/*",
+        "dist/assets/*",
+        "dist/content/isolated.css"
+      ],
       "matches": ["<all_urls>"]
     }
   ]

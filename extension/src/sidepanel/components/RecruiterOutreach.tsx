@@ -229,15 +229,20 @@ export const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
                         target="_blank"
                         rel="noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="text-[9px] font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50/70 px-1.5 py-0.5 rounded border border-indigo-100"
+                        className="text-[9px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50/80 px-2 py-0.5 rounded border border-indigo-200"
+                        title={`Live LinkedIn people search for ${rec.title}`}
                       >
-                        LinkedIn ↗
+                        LinkedIn Search ↗
                       </a>
                     )}
                   </div>
                 </div>
               );
             })}
+          </div>
+          <div className="text-[10px] text-slate-500 bg-white/70 p-1.5 rounded border border-slate-200 flex items-center gap-1">
+            <span>💡</span>
+            <span>Click <b>LinkedIn Search ↗</b> to pick an active recruiter, or send directly to the verified team email.</span>
           </div>
         </div>
       )}

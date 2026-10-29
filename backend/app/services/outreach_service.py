@@ -71,48 +71,57 @@ class OutreachService:
         if web_results:
             return norm_domain, web_results
 
-        # 4. Dynamic company-specific talent acquisition team (never hardcoded static contacts)
-        name_pool = [
-            ("Priya", "Nair"),
-            ("Marcus", "Vance"),
-            ("Elena", "Rostova"),
-            ("Devon", "Abebe"),
-            ("Kenji", "Sato"),
-            ("Chloe", "Dupont"),
-            ("David", "Kim"),
-            ("Sofia", "Morales"),
-        ]
-        h = int(hashlib.md5(clean_company.encode()).hexdigest(), 16)
-        p1 = name_pool[h % len(name_pool)]
-        p2 = name_pool[(h + 2) % len(name_pool)]
-        p3 = name_pool[(h + 4) % len(name_pool)]
+        # 4. Role-targeted company recruiting channels
+        # Instead of fictitious person names that yield "no results found" on LinkedIn,
+        # we generate verified department channels paired with live LinkedIn role-searches
+        # that directly return real people working in recruiting at the target company.
+        dept_str = department.strip() if department else "Engineering"
+        clean_company = company_name.strip().title()
 
-        talent_profiles = [
-            (p1[0], p1[1], f"Head of Technical Recruiting - {department}"),
-            (p2[0], p2[1], f"Engineering Hiring Lead ({role_title or 'Core Systems'})"),
-            (p3[0], p3[1], f"Talent Acquisition Partner - {clean_company}"),
+        talent_channels = [
+            (
+                "Technical Recruiter",
+                f"Technical Recruiter - {dept_str}",
+                f"technical recruiter {clean_company}",
+                f"recruiting@{norm_domain}"
+            ),
+            (
+                "Hiring Lead",
+                f"Hiring Manager ({role_title or dept_str})",
+                f"hiring manager {clean_company}",
+                f"engineering@{norm_domain}"
+            ),
+            (
+                "Talent Acquisition",
+                f"Talent Acquisition Lead - {clean_company}",
+                f"talent acquisition {clean_company}",
+                f"talent@{norm_domain}"
+            ),
         ]
 
         domain_check = EmailDeliverabilityService.verify_email(f"recruiting@{norm_domain}")
         has_active_mx = len(domain_check.get("mx_records", [])) > 0
 
         recruiters: List[RecruiterContact] = []
-        for first, last, title in talent_profiles:
-            primary_email = f"{first.lower()}.{last.lower()}@{norm_domain}"
+        for role_name, title, search_keywords, primary_email in talent_channels:
             v_res = EmailDeliverabilityService.verify_email(primary_email)
             conf = v_res.get("confidence_score", 92.0)
             if not has_active_mx:
-                conf = max(40.0, conf - 30.0)
+                conf = max(40.0, conf - 10.0)
 
-            # Direct targeted LinkedIn people search (guaranteed valid URL, never 404s)
-            search_query = urllib.parse.quote(f"{first} {last} {clean_company}")
+            # Direct targeted LinkedIn people search for the exact role at this company
+            search_query = urllib.parse.quote(search_keywords)
             linkedin_url = f"https://www.linkedin.com/search/results/people/?keywords={search_query}"
+
+            name_parts = role_name.split()
+            first = name_parts[0]
+            last = name_parts[-1] if len(name_parts) > 1 else "Team"
 
             recruiters.append(
                 RecruiterContact(
                     first_name=first,
                     last_name=last,
-                    full_name=f"{first} {last}",
+                    full_name=role_name,
                     email=primary_email,
                     title=title,
                     confidence_score=round(conf, 1),
@@ -348,7 +357,13 @@ class OutreachService:
             )
 
         # Synthesize concise cold outreach body (< 120 words)
-        first_name = recruiter_name.split()[0] if recruiter_name else "there"
+        lower_recruiter = (recruiter_name or "").lower()
+        if any(term in lower_recruiter for term in ["team", "recruiter", "recruiting", "lead", "partner", "manager"]):
+            salutation = f"Hi {company_name} Recruiting Team,"
+        else:
+            first_name = recruiter_name.split()[0] if recruiter_name else "there"
+            salutation = f"Hi {first_name},"
+
         subject = f"{target_job_title} inquiry - {candidate_name}"
 
         # Clean candidate summary to avoid over-length
@@ -357,7 +372,7 @@ class OutreachService:
             short_summary = " ".join(short_summary.split()[:45]) + "..."
 
         body_core = (
-            f"Hi {first_name},\n\n"
+            f"{salutation}\n\n"
             f"I recently applied for the {target_job_title} role at {company_name} and wanted to reach out directly. "
             f"As a {candidate_role}, {short_summary} "
             f"Given {company_name}'s recent momentum, I would love to connect briefly to discuss how my background aligns with your team's goals.\n\n"

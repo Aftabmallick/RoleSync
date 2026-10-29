@@ -32,6 +32,16 @@ export const PdfPreview: React.FC<PdfPreviewProps> = ({ pdfBase64, onDownload })
 
         // Render PDF page to HTML5 Canvas via pdfjs-dist
         const pdfjsLib = await import('pdfjs-dist');
+        if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+          try {
+            const workerUrl = typeof chrome !== 'undefined' && chrome.runtime?.getURL
+              ? chrome.runtime.getURL('assets/pdf.worker.min.mjs')
+              : '/assets/pdf.worker.min.mjs';
+            pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+          } catch (e) {
+            console.warn('[RoleSync UI] Failed to set workerSrc:', e);
+          }
+        }
         const loadingTask = pdfjsLib.getDocument({
           data: uint8Array,
           useSystemFonts: true,
