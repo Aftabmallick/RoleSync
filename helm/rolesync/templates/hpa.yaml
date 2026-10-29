@@ -57,3 +57,4 @@ spec:
           averageUtilization: {{ .Values.worker.autoscaling.targetCPUUtilizationPercentage }}
     {{- end }}
 {{- end }}
+
