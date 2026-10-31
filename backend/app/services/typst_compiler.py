@@ -3,8 +3,11 @@ import tempfile
 import pathlib
 import re
 import shutil
+import logging
 from typing import Dict, Any, Tuple, Optional
 from app.core.config import settings
+
+logger = logging.getLogger("rolesync.typst")
 
 
 class TypstCompilationError(Exception):
@@ -34,11 +37,12 @@ class TypstCompilerService:
         text_spacing: str = "110%"
     ) -> str:
         """Synthesizes valid Typst markup binding candidate data to the resume template."""
-        personal = profile.get("personal", {})
+        personal = profile.get("personal") or profile.get("personal_info") or profile
+        full_name = personal.get("full_name") or profile.get("full_name") or personal.get("name") or profile.get("name", "")
 
         src = f'#import "{self.template_path}": resume\n'
         src += f'#show: resume.with(\n'
-        src += f'  name: "{self.escape_typst(personal.get("full_name", ""))}",\n'
+        src += f'  name: "{self.escape_typst(full_name)}",\n'
         src += f'  email: "{self.escape_typst(personal.get("email", ""))}",\n'
         src += f'  phone: "{self.escape_typst(personal.get("phone", ""))}",\n'
         src += f'  location: "{self.escape_typst(personal.get("location", ""))}",\n'
@@ -203,8 +207,10 @@ class TypstCompilerService:
         doc = fitz.open()
         page = doc.new_page(width=612, height=792)  # US Letter
 
-        personal = profile.get("personal", {})
-        name = personal.get("full_name", "Alex Mercer")
+        personal = profile.get("personal") or profile.get("personal_info") or profile
+        name = personal.get("full_name") or profile.get("full_name") or personal.get("name") or profile.get("name")
+        if not name:
+            raise ValueError("Candidate full_name is required for Typst compilation.")
         email = personal.get("email", "")
         phone = personal.get("phone", "")
         location = personal.get("location", "")

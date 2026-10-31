@@ -62,7 +62,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score }) => {
 
         <div>
           <div className="flex justify-between text-xs font-medium text-slate-600 mb-1">
-            <span>Sublinear Lexical TF (15%)</span>
+            <span>Keyword Density (15%)</span>
             <span className="font-semibold text-slate-800">{score.lexical_score}%</span>
           </div>
           <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">

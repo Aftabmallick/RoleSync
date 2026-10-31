@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { fetchWithAuth } from '../../utils/apiClient';
 
 interface CoverLetterViewerProps {
   targetRole: string;
@@ -36,14 +37,15 @@ export const CoverLetterViewer: React.FC<CoverLetterViewerProps> = ({
     setIsGenerating(true);
     setAutofillStatus(null);
     try {
-      const res = await fetch(`${apiBaseUrl}/cover-letter/synthesize`, {
+      const candidateName = candidateProfile?.personal?.full_name?.trim() || 'Candidate';
+      const res = await fetchWithAuth(`${apiBaseUrl}/cover-letter/synthesize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           target_role: targetRole,
           company_name: companyName,
           raw_job_description: rawJd,
-          candidate_name: candidateProfile?.personal?.full_name || 'Alex Mercer',
+          candidate_name: candidateName,
           candidate_summary: candidateProfile?.summary || '',
           master_profile: candidateProfile,
           tone: tone,

@@ -9,7 +9,8 @@
     "sidePanel",
     "scripting",
     "alarms",
-    "identity"
+    "identity",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "*://*.greenhouse.io/*",
@@ -55,7 +56,9 @@
         "http://127.0.0.1/*"
       ],
       "js": ["dist/content/injector.js"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": true
     }
   ],
   "side_panel": {

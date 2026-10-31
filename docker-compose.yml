@@ -48,6 +48,8 @@ services:
       dockerfile: Dockerfile
     container_name: rolesync-api
     restart: unless-stopped
+    env_file:
+      - backend/.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,6 +68,12 @@ services:
       ENVIRONMENT: production
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   worker:
     build:
@@ -74,6 +82,8 @@ services:
     container_name: rolesync-worker
     restart: unless-stopped
     command: celery -A app.tasks.tailor_tasks worker --loglevel=info --concurrency=4
+    env_file:
+      - backend/.env
     depends_on:
       redis:
         condition: service_healthy

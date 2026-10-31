@@ -53,6 +53,15 @@ class ApiScenarioRunner:
         })
         self.other_auth_headers = {"Authorization": f"Bearer {self.other_token}"}
 
+        # Seed profile for test user so tailor tasks have an established candidate profile
+        self.client.post("/api/v1/profile", headers=self.auth_headers, json={
+            "personal": {"full_name": "API Tester", "email": self.test_email},
+            "skills": [{"name": "Python", "category": "Languages"}, {"name": "PostgreSQL", "category": "Databases"}, {"name": "Docker", "category": "DevOps"}],
+            "experience": [{"id": "exp_1", "company": "Tech Corp", "role": "Senior Engineer", "dates": "2020 - Present", "bullets": [{"id": "b1", "text": "Built scalable APIs in Python."}]}],
+            "education": [{"institution": "MIT", "degree": "B.S. Computer Science", "graduation_year": "2020"}],
+            "section_order": ["experience", "skills", "education"]
+        })
+
     def run_case(
         self,
         api_name: str,
@@ -260,11 +269,11 @@ class ApiScenarioRunner:
     def _test_api_7_tailor_enqueue(self):
         name = "POST /api/v1/tailor"
         valid_jd = "Looking for Senior Python Backend Engineer with FastAPI, PostgreSQL, Docker, and Redis experience."
-        self.run_case(name, "7.1", "Standard tailoring task enqueue", "Positive", "POST", "/api/v1/tailor", json_data={"target_role": "Backend Engineer", "company_name": "Docker Inc", "raw_job_description": valid_jd}, expected_status=[202])
-        self.run_case(name, "7.2", "Tailoring with required_years specified", "Positive", "POST", "/api/v1/tailor", json_data={"target_role": "Senior Engineer", "company_name": "Stripe", "raw_job_description": valid_jd, "required_years": 5.0}, expected_status=[202])
+        self.run_case(name, "7.1", "Standard tailoring task enqueue", "Positive", "POST", "/api/v1/tailor", headers=self.auth_headers, json_data={"target_role": "Backend Engineer", "company_name": "Docker Inc", "raw_job_description": valid_jd}, expected_status=[202])
+        self.run_case(name, "7.2", "Tailoring with required_years specified", "Positive", "POST", "/api/v1/tailor", headers=self.auth_headers, json_data={"target_role": "Senior Engineer", "company_name": "Stripe", "raw_job_description": valid_jd, "required_years": 5.0}, expected_status=[202])
         self.run_case(name, "7.3", "Tailoring with explicit custom master profile", "Positive", "POST", "/api/v1/tailor", json_data={"target_role": "Platform Dev", "company_name": "Netflix", "raw_job_description": valid_jd, "master_profile": {"personal": {"full_name": "Custom Candidate"}, "skills": [{"name": "Python"}], "experience": [{"company": "Co", "role": "Dev", "bullets": [{"id": "b1", "text": "Built services."}]}]}}, expected_status=[202])
-        self.run_case(name, "7.4", "Tailoring with long 5000+ character JD", "Edge Case", "POST", "/api/v1/tailor", json_data={"target_role": "Lead Architect", "company_name": "Amazon", "raw_job_description": valid_jd * 50}, expected_status=[202])
-        self.run_case(name, "7.5", "Tailoring with minimal JD text", "Edge Case", "POST", "/api/v1/tailor", json_data={"target_role": "Dev", "company_name": "Startup", "raw_job_description": "Python, Docker required"}, expected_status=[202])
+        self.run_case(name, "7.4", "Tailoring with long 5000+ character JD", "Edge Case", "POST", "/api/v1/tailor", headers=self.auth_headers, json_data={"target_role": "Lead Architect", "company_name": "Amazon", "raw_job_description": valid_jd * 50}, expected_status=[202])
+        self.run_case(name, "7.5", "Tailoring with minimal JD text", "Edge Case", "POST", "/api/v1/tailor", headers=self.auth_headers, json_data={"target_role": "Dev", "company_name": "Startup", "raw_job_description": "Python, Docker required"}, expected_status=[202])
         self.run_case(name, "7.6", "Missing raw_job_description", "Validation", "POST", "/api/v1/tailor", json_data={"target_role": "Engineer", "company_name": "Google"}, expected_status=[422])
         self.run_case(name, "7.7", "Missing target_role", "Validation", "POST", "/api/v1/tailor", json_data={"company_name": "Google", "raw_job_description": valid_jd}, expected_status=[422])
         self.run_case(name, "7.8", "Missing company_name", "Validation", "POST", "/api/v1/tailor", json_data={"target_role": "Engineer", "raw_job_description": valid_jd}, expected_status=[422])
@@ -344,10 +353,10 @@ class ApiScenarioRunner:
             "candidate_name": "Alex Mercer",
             "candidate_role": "Senior Engineer",
             "candidate_summary": "Distributed systems specialist with 7 years experience.",
-            "recruiter_name": "Sarah Recruiter",
-            "recruiter_email": "sarah@acme.com",
+            "recruiter_name": "Sarah Chen",
+            "recruiter_email": "sarah.chen@stripe.com",
             "recruiter_title": "Head of Technical Recruiting",
-            "company_name": "Acme Corp",
+            "company_name": "Stripe",
             "target_job_title": "Staff Engineer",
             "physical_address": "500 Howard St, San Francisco, CA 94105",
             "mode": "MANUAL"

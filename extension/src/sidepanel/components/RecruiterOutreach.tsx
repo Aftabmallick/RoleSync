@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { fetchWithAuth } from '../../utils/apiClient';
 
 export interface DetectedPoster {
   fullName: string;
@@ -115,7 +116,7 @@ export const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
   const handleDiscoverRecruiters = async () => {
     setIsDiscovering(true);
     try {
-      const res = await fetch(`${apiBaseUrl}/outreach/discover`, {
+      const res = await fetchWithAuth(`${apiBaseUrl}/outreach/discover`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -150,7 +151,7 @@ export const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
     setIsPredicting(true);
     setPredictedEmails([]);
     try {
-      const res = await fetch(`${apiBaseUrl}/outreach/predict-email`, {
+      const res = await fetchWithAuth(`${apiBaseUrl}/outreach/predict-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -186,7 +187,7 @@ export const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
     if (!recruiterEmail) return;
     setIsVerifying(true);
     try {
-      const res = await fetch(`${apiBaseUrl}/outreach/verify`, {
+      const res = await fetchWithAuth(`${apiBaseUrl}/outreach/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: recruiterEmail }),
@@ -220,12 +221,13 @@ export const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
       const targetEmail =
         recruiterEmail || `recruiting@${companyName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`;
 
-      const res = await fetch(`${apiBaseUrl}/outreach/synthesize`, {
+      const candidateName = candidateProfile?.personal?.full_name?.trim();
+      const res = await fetchWithAuth(`${apiBaseUrl}/outreach/synthesize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          candidate_name: candidateProfile?.personal?.full_name || 'Alex Mercer',
-          candidate_role: candidateProfile?.experience?.[0]?.role || 'Senior Software Engineer',
+          candidate_name: candidateName || 'Candidate',
+          candidate_role: candidateProfile?.experience?.[0]?.role || jobTitle || 'Professional',
           candidate_summary: candidateProfile?.summary || '',
           recruiter_name: recruiterName || 'Hiring Lead',
           recruiter_email: targetEmail,
@@ -563,15 +565,40 @@ export const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-slate-700">LinkedIn Connection Note:</span>
-                <span
-                  className={`text-[11px] font-bold px-2 py-0.5 rounded ${
-                    editableLiNote.length <= 300
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : 'bg-rose-50 text-rose-700 border border-rose-200'
-                  }`}
-                >
-                  {editableLiNote.length} / 300 characters
-                </span>
+                <div className="flex items-center gap-2">
+                  {editableLiNote.length > 300 && (
+                    <button
+                      onClick={() => {
+                        let trimmed = editableLiNote
+                          .replace(/I wanted to reach out to express my interest in/gi, 'Excited to apply for')
+                          .replace(/I came across your profile and wanted to connect/gi, 'Connecting regarding')
+                          .replace(/I would love the opportunity to/gi, 'Would love to')
+                          .replace(/I am interested in learning more about/gi, 'Interested in')
+                          .replace(/Thank you for your time and consideration/gi, 'Thanks for your time')
+                          .replace(/\s+/g, ' ')
+                          .trim();
+                        if (trimmed.length > 300) {
+                          trimmed = trimmed.slice(0, 297).replace(/\s+\S*$/, '') + '...';
+                        }
+                        setEditableLiNote(trimmed);
+                        if (onToast) onToast('success', `Trimmed to ${trimmed.length} chars.`, 'Smart Trimmed');
+                      }}
+                      className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10px] rounded shadow-2xs transition-colors"
+                      title="Automatically shorten note to fit LinkedIn's 300 character limit"
+                    >
+                      ✨ Smart Trim (&lt;300c)
+                    </button>
+                  )}
+                  <span
+                    className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                      editableLiNote.length <= 300
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                    }`}
+                  >
+                    {editableLiNote.length} / 300 characters
+                  </span>
+                </div>
               </div>
               <textarea
                 rows={4}

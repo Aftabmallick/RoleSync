@@ -68,13 +68,40 @@ export class WorkdayWizardEngine {
   }
 
   /**
+   * Detects presence of bot challenges or CAPTCHA widgets in the page.
+   */
+  public detectCaptcha(): boolean {
+    const captchaSelectors = [
+      '#turnstile-wrapper',
+      'iframe[src*="challenges.cloudflare.com"]',
+      'iframe[src*="recaptcha"]',
+      'iframe[src*="hcaptcha"]',
+      'div[class*="captcha" i]',
+      'div[id*="captcha" i]',
+      'iframe[title*="reCAPTCHA" i]',
+      '[data-automation-id="captchaSection"]'
+    ];
+    return captchaSelectors.some((selector) => !!document.querySelector(selector));
+  }
+
+  /**
    * Executes autofill for the current detected Workday stage, updates session checkpoint,
    * and optionally triggers the 'Save and Continue' advance button.
    */
   public async processCurrentStage(
     candidateData: Record<string, any>,
     pdfBase64?: string
-  ): Promise<{ stage: WorkdayStage; completed: number; failed: number; nextStageReady: boolean }> {
+  ): Promise<{ stage: WorkdayStage | 'CAPTCHA_PAUSED'; completed: number; failed: number; nextStageReady: boolean }> {
+    if (this.detectCaptcha()) {
+      console.warn('[RoleSync] CAPTCHA / bot challenge detected. Pausing automation for human completion.');
+      return {
+        stage: 'CAPTCHA_PAUSED',
+        completed: 0,
+        failed: 0,
+        nextStageReady: false,
+      };
+    }
+
     const stage = this.detectCurrentStage();
     console.log(`[RoleSync] Processing Workday stage: ${stage}`);
 
@@ -174,7 +201,7 @@ export class WorkdayWizardEngine {
             selector: 'input[type="file"][data-automation-id*="file-upload-input-drop-zone"], input[type="file"]',
             value: pdfBase64,
             type: 'FILE',
-            fileName: data.resumeFileName || 'Alex_Mercer_Resume.pdf',
+            fileName: data.resumeFileName || (data.firstName ? `${data.firstName}_Resume.pdf` : 'Candidate_Resume.pdf'),
           });
         }
         if (data.linkedinUrl) {

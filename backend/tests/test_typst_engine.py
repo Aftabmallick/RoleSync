@@ -76,6 +76,14 @@ class TestTypstEngine(unittest.TestCase):
         count = TypstCompilerService.inspect_page_count(mock_pdf)
         self.assertEqual(count, 2)
 
+    def test_missing_candidate_full_name_raises_value_error(self):
+        # Must strictly raise ValueError when full_name is omitted (no mock persona fallback)
+        profile_without_name = {"personal": {"email": "test@example.com"}}
+        draft = {"summary": "Experienced engineer"}
+        with self.assertRaises(ValueError) as ctx:
+            self.compiler._generate_vector_pdf_fitz(profile_without_name, draft)
+        self.assertIn("full_name is required", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

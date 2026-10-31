@@ -113,6 +113,42 @@ class ResumeParserService:
         return cls.parse_resume_data(full_text, raw_lines, extracted_links)
 
     @classmethod
+    def extract_text_from_docx(cls, docx_bytes: bytes) -> str:
+        """
+        Extracts raw text paragraphs from a Word .docx archive using built-in zipfile and XML parser.
+        Robust against non-standard styles with zero external dependencies.
+        """
+        import zipfile
+        import xml.etree.ElementTree as ET
+
+        if not docx_bytes:
+            raise ValueError("Word document content is empty.")
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(docx_bytes)) as z:
+                if "word/document.xml" not in z.namelist():
+                    raise ValueError("Invalid .docx file: word/document.xml not found.")
+                xml_content = z.read("word/document.xml")
+                tree = ET.fromstring(xml_content)
+                ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+                paragraphs: List[str] = []
+                for p in tree.iter(f"{{{ns['w']}}}p"):
+                    texts = [node.text for node in p.iter(f"{{{ns['w']}}}t") if node.text]
+                    if texts:
+                        paragraphs.append("".join(texts).strip())
+                return "\n".join([p for p in paragraphs if p])
+        except Exception as e:
+            logger.error(f"Failed to parse Word .docx resume: {e}")
+            raise ValueError(f"Could not parse Word .docx document: {e}")
+
+    @classmethod
+    def parse_docx(cls, docx_bytes: bytes) -> Dict[str, Any]:
+        """High-fidelity Word (.docx) parsing pipeline."""
+        full_text = cls.extract_text_from_docx(docx_bytes)
+        raw_lines = [line.strip() for line in full_text.split("\n") if line.strip()]
+        return cls.parse_resume_data(full_text, raw_lines, [])
+
+    @classmethod
     def parse_resume_text(cls, text: str) -> Dict[str, Any]:
         """Convenience method for plain text resume inputs."""
         raw_lines = [line.strip() for line in text.split("\n") if line.strip()]

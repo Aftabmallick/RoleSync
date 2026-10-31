@@ -75,6 +75,7 @@ async def main():
     assert status == 200, f"Expected 200, got {status}: {auth_res}"
     access_token = auth_res["access_token"]
     refresh_token = auth_res["refresh_token"]
+    auth_headers = {"Authorization": f"Bearer {access_token}"}
     print(f"  PASS -> Access token issued (RS256 JWT, length={len(access_token)})")
     print(f"  PASS -> Refresh token issued (opaque SHA-256 hash stored)")
 
@@ -139,6 +140,7 @@ async def main():
     status, out_res = make_request(
         "/api/v1/outreach/synthesize",
         method="POST",
+        headers=auth_headers,
         body={
             "candidate_name": "Alex Mercer",
             "candidate_role": "Senior Distributed Systems Engineer",
@@ -167,11 +169,33 @@ async def main():
     status, tailor_task = make_request(
         "/api/v1/tailor",
         method="POST",
+        headers={"Authorization": f"Bearer {access_token}"},
         body={
             "target_role": "Senior Backend Engineer",
             "company_name": "Acme Technologies",
             "raw_job_description": raw_jd,
-            "required_years": 3.0
+            "required_years": 3.0,
+            "master_profile": {
+                "personal": {"full_name": "Alex Mercer", "email": "alex@mercer.dev"},
+                "skills": [{"name": "Python", "category": "Languages"}, {"name": "PostgreSQL", "category": "Databases"}, {"name": "Docker", "category": "DevOps"}],
+                "experience": [
+                    {
+                        "id": "exp_1",
+                        "company": "Stripe",
+                        "role": "Backend Engineer",
+                        "dates": "2021 - Present",
+                        "bullets": [{"id": "b_1", "text": "Built high-throughput microservices in Python."}]
+                    }
+                ],
+                "education": [
+                    {
+                        "institution": "MIT",
+                        "degree": "B.S. Computer Science",
+                        "graduation_year": "2020"
+                    }
+                ],
+                "section_order": ["experience", "skills", "education"]
+            }
         }
     )
     assert status == 202, f"Expected 202 Accepted, got {status}: {tailor_task}"
@@ -212,6 +236,7 @@ async def main():
     status, disc_res = make_request(
         "/api/v1/outreach/discover",
         method="POST",
+        headers=auth_headers,
         body={
             "company_name": "Stripe",
             "role_title": "Senior Infrastructure Engineer",
@@ -227,6 +252,7 @@ async def main():
     status, ver_res = make_request(
         "/api/v1/outreach/verify",
         method="POST",
+        headers=auth_headers,
         body={"email": first_recruiter["email"]}
     )
     assert status == 200, f"Expected 200, got {status}: {ver_res}"
@@ -237,6 +263,7 @@ async def main():
     status, cl_res = make_request(
         "/api/v1/cover-letter/synthesize",
         method="POST",
+        headers=auth_headers,
         body={
             "target_role": "Senior Infrastructure Engineer",
             "company_name": "Stripe",
@@ -255,6 +282,7 @@ async def main():
     status, app_res = make_request(
         "/api/v1/applications",
         method="POST",
+        headers=auth_headers,
         body={
             "company_name": "Stripe",
             "job_title": "Senior Infrastructure Engineer",
@@ -269,7 +297,7 @@ async def main():
     live_app_id = app_res["id"]
     print(f"  PASS -> Created tracked application: ID={live_app_id}, Status={app_res['status']}")
 
-    status, list_res = make_request("/api/v1/applications", method="GET")
+    status, list_res = make_request("/api/v1/applications", method="GET", headers=auth_headers)
     assert status == 200, f"Expected 200, got {status}: {list_res}"
     assert list_res["total"] >= 1
     print(f"  PASS -> Retrieved pipeline applications: total={list_res['total']}")
@@ -277,13 +305,14 @@ async def main():
     status, patch_res = make_request(
         f"/api/v1/applications/{live_app_id}",
         method="PATCH",
+        headers=auth_headers,
         body={"status": "INTERVIEWING", "notes": "Technical screening call scheduled."}
     )
     assert status == 200, f"Expected 200, got {status}: {patch_res}"
     assert patch_res["status"] == "INTERVIEWING"
     print(f"  PASS -> Updated application status to INTERVIEWING")
 
-    status, del_res = make_request(f"/api/v1/applications/{live_app_id}", method="DELETE")
+    status, del_res = make_request(f"/api/v1/applications/{live_app_id}", method="DELETE", headers=auth_headers)
     assert status == 204 or status == 200, f"Expected 204/200, got {status}"
     print(f"  PASS -> Deleted application from pipeline successfully")
 
@@ -292,6 +321,7 @@ async def main():
     status, match_res = make_request(
         "/api/v1/resume/match-and-suggest",
         method="POST",
+        headers=auth_headers,
         body={
             "target_role": "Senior Infrastructure Engineer",
             "company_name": "Stripe",
@@ -337,6 +367,7 @@ async def main():
     status, apply_res = make_request(
         "/api/v1/resume/apply-enhancements",
         method="POST",
+        headers={"Authorization": f"Bearer {access_token}"},
         body={
             "version_name": "Stripe Infrastructure v1",
             "company_name": "Stripe",
@@ -373,13 +404,13 @@ async def main():
     print(f"  PASS -> Enhancements applied and compiled single-page PDF version: ID={created_version_id}")
 
     # List versions
-    status, versions_res = make_request("/api/v1/resume/versions", method="GET")
+    status, versions_res = make_request("/api/v1/resume/versions", method="GET", headers={"Authorization": f"Bearer {access_token}"})
     assert status == 200, f"Expected 200, got {status}: {versions_res}"
     assert versions_res["total"] >= 1
     print(f"  PASS -> Listed resume versions: total={versions_res['total']}")
 
     # Clean up test version
-    status, del_ver_res = make_request(f"/api/v1/resume/versions/{created_version_id}", method="DELETE")
+    status, del_ver_res = make_request(f"/api/v1/resume/versions/{created_version_id}", method="DELETE", headers={"Authorization": f"Bearer {access_token}"})
     assert status in (200, 204), f"Expected 200/204, got {status}: {del_ver_res}"
     print(f"  PASS -> Deleted test resume version successfully")
 

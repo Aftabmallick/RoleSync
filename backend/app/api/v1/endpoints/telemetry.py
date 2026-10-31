@@ -79,11 +79,12 @@ async def report_selector_failure(
             failed_selectors=report.failed_selectors,
             summary=clean_summary,
             client_version=report.client_version,
-            timestamp=report.timestamp or "",
+            timestamp=str(report.timestamp) if report.timestamp is not None else "",
         )
         db.add(drift_record)
         await db.commit()
     except Exception as e:
+        await db.rollback()
         logger.warning(f"Failed to persist telemetry drift event to DB ({e}); kept in-memory.")
 
     logger.warning(

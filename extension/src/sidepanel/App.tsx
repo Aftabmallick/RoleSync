@@ -14,6 +14,8 @@ import { ToastContainer, ToastMessage, ToastType } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useSessionStore } from '../store/useSessionStore';
 import { AuthModal } from './components/AuthModal';
+import { PersistentActionDock } from './components/PersistentActionDock';
+import { fetchWithAuth } from '../utils/apiClient';
 
 const BACKEND_API_URL = 'http://localhost:8000/api/v1';
 
@@ -21,6 +23,8 @@ export default function App() {
   const { isAuthenticated, user, logout, initAuth } = useSessionStore();
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'copilot' | 'applications' | 'profile'>('copilot');
+  const [wizardStage, setWizardStage] = useState<1 | 2 | 3>(1);
+  const [isProfileDirty, setIsProfileDirty] = useState<boolean>(false);
   const [executionMode, setExecutionMode] = useState<'copilot' | 'autopilot'>('copilot');
   const [masterProfile, setMasterProfile] = useState<MasterProfileData | null>(null);
   const [keepaliveConnected, setKeepaliveConnected] = useState<boolean>(false);
@@ -180,9 +184,18 @@ export default function App() {
       }
 
       if (chrome.storage.session) {
-        chrome.storage.session.get('current_jd').then((res) => {
+        chrome.storage.session.get(['current_jd', 'rolesync_session_checkpoint']).then((res) => {
           if (res.current_jd?.data) {
             setCurrentJd(res.current_jd.data);
+          }
+          if (res.rolesync_session_checkpoint) {
+            const cp = res.rolesync_session_checkpoint;
+            if (cp.tailorResult) setTailorResult(cp.tailorResult);
+            if (cp.isTailoring !== undefined) setIsTailoring(cp.isTailoring);
+            if (cp.tailorStage) setTailorStage(cp.tailorStage);
+            if (cp.activeTab) setActiveTab(cp.activeTab);
+            if (cp.wizardStage) setWizardStage(cp.wizardStage);
+            else if (cp.tailorResult?.pdfBase64) setWizardStage(3);
           }
         }).catch(() => {});
 
@@ -230,6 +243,23 @@ export default function App() {
     };
   }, []);
 
+  // Session Checkpoint Persistence across sidepanel close/reopen
+  useEffect(() => {
+    if (typeof chrome !== 'undefined' && chrome.storage?.session) {
+      chrome.storage.session.set({
+        rolesync_session_checkpoint: {
+          tailorResult,
+          isTailoring,
+          tailorStage,
+          activeTab,
+          wizardStage,
+        },
+      }).catch((err) => {
+        console.warn('[RoleSync UI] Failed to save session checkpoint:', err);
+      });
+    }
+  }, [tailorResult, isTailoring, tailorStage, activeTab, wizardStage]);
+
   const handleTriggerTailoring = async () => {
     if (!currentJd) return;
     setIsTailoring(true);
@@ -243,7 +273,7 @@ export default function App() {
           ? masterProfile
           : undefined;
 
-      const postRes = await fetch(`${BACKEND_API_URL}/tailor`, {
+      const postRes = await fetchWithAuth(`${BACKEND_API_URL}/tailor`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -279,6 +309,8 @@ export default function App() {
                 pdfBase64: data.pdf_base64,
                 tailored_draft: data.tailored_draft,
               });
+              setWizardStage(3);
+              showToast('success', `Tailored single-page resume generated (${data.ats_score?.composite_score || 85}% ATS Score).`, 'Tailoring Complete');
               if (ws) ws.close();
             } else if (data.status === 'FAILED') {
               completed = true;
@@ -301,7 +333,7 @@ export default function App() {
           return;
         }
         try {
-          const pollRes = await fetch(`${BACKEND_API_URL}/tailor/${task_id}`);
+          const pollRes = await fetchWithAuth(`${BACKEND_API_URL}/tailor/${task_id}`);
           if (pollRes.ok) {
             const data = await pollRes.json();
             if (data.stage) setTailorStage(data.stage);
@@ -314,6 +346,7 @@ export default function App() {
                 pdfBase64: data.pdf_base64,
                 tailored_draft: data.tailored_draft,
               });
+              setWizardStage(3);
               showToast('success', `Tailored single-page resume generated (${data.ats_score?.composite_score || 85}% ATS Score).`, 'Tailoring Complete');
               if (ws) ws.close();
             } else if (data.status === 'FAILED') {
@@ -341,6 +374,11 @@ export default function App() {
     if (!tabs[0]?.id) return;
 
     setAutofillProgress({ completed: 0, total: 6, current: 'Initializing...' });
+
+    // Auto-save to pipeline tracker on 1-click autofill launch (P1-6)
+    if (currentJd) {
+      handleSaveToTracker();
+    }
 
     chrome.tabs.sendMessage(tabs[0].id, {
       action: 'EXECUTE_DOM_AUTOFILL',
@@ -507,11 +545,11 @@ export default function App() {
             <span>{isScanningTab ? '⏳ Scanning...' : '⚡ Scan Tab'}</span>
           </button>
           
-          {/* Backend Status Indicator (Clickable to re-check) */}
+          {/* Consolidated Engine Status Indicator */}
           <div
             onClick={checkBackendHealth}
-            className="flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 cursor-pointer px-2 py-1 rounded-full border border-slate-200 transition-colors"
-            title="Click to check backend status"
+            className="flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer px-2.5 py-1 rounded-full border border-slate-200"
+            title={`RoleSync Engine: ${backendStatus} | Service Worker: ${keepaliveConnected ? 'Active' : 'Standby'}`}
           >
             <span
               className={`w-2 h-2 rounded-full ${
@@ -523,21 +561,7 @@ export default function App() {
               }`}
             />
             <span className="text-[11px] font-semibold text-slate-700">
-              {backendStatus === 'online' ? 'Live' : backendStatus === 'checking' ? 'Connecting...' : 'Offline'}
-            </span>
-          </div>
-
-          <div
-            className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-full border border-slate-200"
-            title="Chrome Worker Keepalive Port"
-          >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                keepaliveConnected ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-amber-400'
-              }`}
-            />
-            <span className="text-[11px] font-semibold text-slate-600">
-              {keepaliveConnected ? 'Active' : 'Standby'}
+              {backendStatus === 'online' ? 'RoleSync Live' : backendStatus === 'checking' ? 'Connecting...' : 'Offline'}
             </span>
           </div>
 
@@ -576,7 +600,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span>⚠️</span>
             <span>
-              <strong>Backend Offline:</strong> Run <code className="bg-amber-100 px-1 py-0.5 rounded text-[11px]">uvicorn app.main:app --port 8000</code> for AI features.
+              <strong>AI Engine Offline:</strong> Start your RoleSync desktop app or check your local connection to enable AI tailoring.
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -599,7 +623,14 @@ export default function App() {
       {/* Navigation Tabs */}
       <nav className="flex border-b border-slate-200 bg-white px-3 shrink-0">
         <button
-          onClick={() => setActiveTab('copilot')}
+          onClick={() => {
+            if (activeTab === 'profile' && isProfileDirty) {
+              if (!window.confirm('You have unsaved changes in your Master Profile. Switch tabs and lose unsaved changes?')) {
+                return;
+              }
+            }
+            setActiveTab('copilot');
+          }}
           className={`py-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-1.5 ${
             activeTab === 'copilot'
               ? 'border-indigo-600 text-indigo-600'
@@ -611,7 +642,14 @@ export default function App() {
         </button>
 
         <button
-          onClick={() => setActiveTab('applications')}
+          onClick={() => {
+            if (activeTab === 'profile' && isProfileDirty) {
+              if (!window.confirm('You have unsaved changes in your Master Profile. Switch tabs and lose unsaved changes?')) {
+                return;
+              }
+            }
+            setActiveTab('applications');
+          }}
           className={`py-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-1.5 ${
             activeTab === 'applications'
               ? 'border-indigo-600 text-indigo-600'
@@ -636,6 +674,9 @@ export default function App() {
           <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.2 rounded font-semibold border border-indigo-100">
             Vault
           </span>
+          {isProfileDirty && (
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Unsaved edits" />
+          )}
         </button>
       </nav>
 
@@ -644,7 +685,11 @@ export default function App() {
         {activeTab === 'profile' ? (
           <ErrorBoundary fallbackTitle="Master Profile Vault Error">
             <ProfileEditor
-              onSave={(p) => setMasterProfile(p)}
+              onSave={(p) => {
+                setMasterProfile(p);
+                setIsProfileDirty(false);
+              }}
+              onDirtyChange={setIsProfileDirty}
               apiBaseUrl={BACKEND_API_URL}
               onToast={showToast}
             />
@@ -790,7 +835,7 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Resume Matcher & Score Optimizer */}
+                {/* 3-Stage Stepper: Benchmark & Gap Analysis -> Review Adaptations -> PDF Compilation */}
                 <ResumeMatcher
                   currentJd={currentJd}
                   baseProfile={masterProfile}
@@ -798,41 +843,23 @@ export default function App() {
                   onVersionSelected={handleVersionSelected}
                   onNewProfileUploaded={handleNewProfileUploaded}
                   onToast={showToast}
+                  activeStage={wizardStage}
+                  onStageChange={(s) => setWizardStage(s)}
+                  onTriggerDeepTailor={handleTriggerTailoring}
+                  isDeepTailoring={isTailoring}
+                  deepTailorStage={tailorStage}
                 />
 
-                {/* Optional Deep AI Tailor Card */}
-                <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-slate-800">Deep AI Tailoring</span>
-                    <p className="text-[11px] text-slate-500">Run multi-stage LLM rewrite of all experience bullets</p>
-                  </div>
-                  <button
-                    className={`py-1.5 px-3 font-semibold text-xs rounded-lg shadow-xs transition-all ${
-                      isTailoring
-                        ? 'bg-indigo-400 cursor-not-allowed text-white'
-                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                    }`}
-                    disabled={isTailoring}
-                    onClick={handleTriggerTailoring}
-                  >
-                    {isTailoring
-                      ? tailorStage
-                        ? `${tailorStage}...`
-                        : 'Tailoring...'
-                      : 'Run Deep Tailor'}
-                  </button>
-                </div>
-
-                {/* ATS Score Card */}
-                {tailorResult?.score && <ScoreCard score={tailorResult.score} />}
-
-                {/* Diff Viewer */}
+                {/* Diff Viewer (when tailored experience draft is present) */}
                 {tailorResult?.tailored_draft?.experience && (
                   <TailorDiffViewer
                     tailoredExperience={tailorResult.tailored_draft.experience}
                     masterExperience={masterProfile?.experience}
                   />
                 )}
+
+                {/* ATS Score Card */}
+                {tailorResult?.score && <ScoreCard score={tailorResult.score} />}
 
                 {/* PDF Preview */}
                 {tailorResult?.pdfBase64 && (
@@ -843,6 +870,9 @@ export default function App() {
                       link.href = `data:application/pdf;base64,${tailorResult.pdfBase64}`;
                       link.download = `RoleSync_${currentJd.companyName.replace(/\s+/g, '_')}_Tailored_Resume.pdf`;
                       link.click();
+                    }}
+                    onAutoCondense={() => {
+                      showToast('info', 'Smart Pruning applied: condensed spacing and secondary bullets pruned for 1-page fit.', 'Auto-Condense Applied');
                     }}
                   />
                 )}
@@ -1049,6 +1079,20 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Persistent Bottom Action Dock */}
+      {activeTab === 'copilot' && (
+        <PersistentActionDock
+          currentJd={currentJd}
+          executionMode={executionMode}
+          onModeChange={setExecutionMode}
+          onExecuteAutofill={handleExecuteAutofill}
+          onExecuteAutopilot={handleExecuteAutopilot}
+          isAutopilotRunning={isAutopilotRunning}
+          autofillProgress={autofillProgress}
+          hasTailoredResume={!!tailorResult?.pdfBase64}
+        />
+      )}
 
       {/* Footer */}
       <footer className="p-3 border-t border-slate-200 bg-white text-center text-[11px] text-slate-400">

@@ -151,8 +151,9 @@ async def create_application(
 
     # 2. Create Application entity
     app_uuid = uuid.uuid4()
-    now_dt = datetime.now(timezone.utc)
-    now_iso = now_dt.isoformat()
+    now_utc = datetime.now(timezone.utc)
+    now_iso = now_utc.isoformat()
+    now_dt = now_utc.replace(tzinfo=None)
 
     new_app = Application(
         id=app_uuid,
@@ -250,7 +251,9 @@ async def update_application(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Application '{app_id}' not found.")
 
     old_status = app.status
-    now_dt = datetime.now(timezone.utc)
+    now_utc = datetime.now(timezone.utc)
+    now_iso = now_utc.isoformat()
+    now_dt = now_utc.replace(tzinfo=None)
 
     if payload.status is not None:
         app.status = payload.status

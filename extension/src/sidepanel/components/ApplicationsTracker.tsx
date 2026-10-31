@@ -35,6 +35,7 @@ export const ApplicationsTracker: React.FC<ApplicationsTrackerProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [filter, setFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('kanban');
 
   // Manual Add Modal state
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
@@ -104,7 +105,7 @@ export const ApplicationsTracker: React.FC<ApplicationsTrackerProps> = ({
         notes: notes,
       };
 
-      const res = await fetch(`${apiBaseUrl}/applications`, {
+      const res = await fetchWithAuth(`${apiBaseUrl}/applications`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -132,7 +133,7 @@ export const ApplicationsTracker: React.FC<ApplicationsTrackerProps> = ({
         prev.map((a) => (a.id === appId ? { ...a, status: newStatus as any } : a))
       );
 
-      await fetch(`${apiBaseUrl}/applications/${appId}`, {
+      await fetchWithAuth(`${apiBaseUrl}/applications/${appId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -146,7 +147,7 @@ export const ApplicationsTracker: React.FC<ApplicationsTrackerProps> = ({
     if (!confirm('Remove this application from your tracker?')) return;
     try {
       setApplications((prev) => prev.filter((a) => a.id !== appId));
-      await fetch(`${apiBaseUrl}/applications/${appId}`, {
+      await fetchWithAuth(`${apiBaseUrl}/applications/${appId}`, {
         method: 'DELETE',
       });
     } catch (e) {
@@ -253,6 +254,25 @@ export const ApplicationsTracker: React.FC<ApplicationsTrackerProps> = ({
           className="flex-1 p-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-1 focus:ring-indigo-500"
         />
 
+        <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+          <button
+            onClick={() => setViewMode('kanban')}
+            className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all ${
+              viewMode === 'kanban' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            📊 Board
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all ${
+              viewMode === 'list' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            📑 List
+          </button>
+        </div>
+
         <button
           onClick={handleExportCsv}
           disabled={applications.length === 0}
@@ -287,84 +307,171 @@ export const ApplicationsTracker: React.FC<ApplicationsTrackerProps> = ({
         ))}
       </div>
 
-      {/* Application Cards List */}
-      <div className="flex flex-col gap-2.5">
-        {isLoading ? (
-          <div className="p-8 text-center text-xs text-slate-400">Loading applications...</div>
-        ) : filteredApps.length === 0 ? (
-          <div className="p-8 bg-white rounded-xl border border-dashed border-slate-200 text-center flex flex-col items-center gap-2">
-            <span className="text-2xl">📋</span>
-            <span className="text-xs font-bold text-slate-700">No applications found</span>
-            <p className="text-[11px] text-slate-400 max-w-[220px]">
-              Apply to jobs with Copilot or add jobs manually to track your pipeline.
-            </p>
-          </div>
-        ) : (
-          filteredApps.map((app) => (
-            <div
-              key={app.id}
-              className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col gap-2 hover:border-slate-300 transition-all"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex flex-col">
-                  <h4 className="font-bold text-slate-900 text-xs leading-snug">{app.job_title}</h4>
-                  <span className="text-xs font-medium text-slate-600">{app.company_name}</span>
-                </div>
+      {/* Application Cards List / Kanban View */}
+      {viewMode === 'kanban' ? (
+        <div className="flex flex-col gap-3">
+          {(['APPLIED', 'INTERVIEWING', 'OFFERED', 'REJECTED'] as const).map((stage) => {
+            const stageApps = applications.filter((a) => a.status === stage);
+            const stageColors: Record<string, { bg: string; border: string; text: string }> = {
+              APPLIED: { bg: 'bg-blue-50/60', border: 'border-blue-200', text: 'text-blue-800' },
+              INTERVIEWING: { bg: 'bg-purple-50/60', border: 'border-purple-200', text: 'text-purple-800' },
+              OFFERED: { bg: 'bg-emerald-50/60', border: 'border-emerald-200', text: 'text-emerald-800' },
+              REJECTED: { bg: 'bg-rose-50/60', border: 'border-rose-200', text: 'text-rose-800' },
+            };
+            const config = stageColors[stage];
 
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-                    {Math.round(app.ats_score)}%
+            return (
+              <div key={stage} className={`p-2.5 rounded-xl border ${config.border} ${config.bg} flex flex-col gap-2`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-[11px] font-extrabold uppercase tracking-wider ${config.text}`}>
+                    {stage} ({stageApps.length})
                   </span>
-
-                  <select
-                    value={app.status}
-                    onChange={(e) => handleUpdateStatus(app.id, e.target.value)}
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-pointer ${getStatusBadge(
-                      app.status
-                    )}`}
-                  >
-                    <option value="DRAFT">DRAFT</option>
-                    <option value="APPLIED">APPLIED</option>
-                    <option value="INTERVIEWING">INTERVIEWING</option>
-                    <option value="OFFERED">OFFERED</option>
-                    <option value="REJECTED">REJECTED</option>
-                  </select>
                 </div>
+
+                {stageApps.length === 0 ? (
+                  <div className="text-[11px] text-slate-400 italic py-1 px-1">No applications in this stage</div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {stageApps.map((app) => (
+                      <div
+                        key={app.id}
+                        className="bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs flex flex-col gap-1.5 text-xs"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h5 className="font-bold text-slate-900 leading-tight">{app.job_title}</h5>
+                            <span className="text-[11px] text-slate-600">{app.company_name}</span>
+                          </div>
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100">
+                            {Math.round(app.ats_score)}%
+                          </span>
+                        </div>
+
+                        {/* Quick Status Advance Actions */}
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[10px]">
+                          <div className="flex items-center gap-1">
+                            {stage === 'APPLIED' && (
+                              <button
+                                onClick={() => handleUpdateStatus(app.id, 'INTERVIEWING')}
+                                className="px-1.5 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded font-semibold border border-purple-200 transition-colors"
+                              >
+                                ➔ Interview
+                              </button>
+                            )}
+                            {stage === 'INTERVIEWING' && (
+                              <button
+                                onClick={() => handleUpdateStatus(app.id, 'OFFERED')}
+                                className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded font-semibold border border-emerald-200 transition-colors"
+                              >
+                                ➔ Offer 🎉
+                              </button>
+                            )}
+                            {stage !== 'REJECTED' && (
+                              <button
+                                onClick={() => handleUpdateStatus(app.id, 'REJECTED')}
+                                className="px-1 py-0.5 text-slate-400 hover:text-rose-600 transition-colors"
+                                title="Mark Rejected"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => handleDelete(app.id)}
+                            className="text-slate-400 hover:text-rose-600 transition-colors"
+                            title="Delete"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-
-              {app.notes && (
-                <p className="text-[11px] text-slate-500 bg-slate-50 p-2 rounded border border-slate-100">
-                  {app.notes}
-                </p>
-              )}
-
-              <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-100">
-                <span>Applied: {new Date(app.applied_at || Date.now()).toLocaleDateString()}</span>
-
-                <div className="flex items-center gap-2">
-                  {app.job_url && (
-                    <a
-                      href={app.job_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-indigo-600 hover:underline"
-                    >
-                      View Post ↗
-                    </a>
-                  )}
-                  <button
-                    onClick={() => handleDelete(app.id)}
-                    className="text-slate-400 hover:text-rose-500 transition-colors"
-                    title="Delete Application"
-                  >
-                    ✕ Delete
-                  </button>
-                </div>
-              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {isLoading ? (
+            <div className="p-8 text-center text-xs text-slate-400">Loading applications...</div>
+          ) : filteredApps.length === 0 ? (
+            <div className="p-8 bg-white rounded-xl border border-dashed border-slate-200 text-center flex flex-col items-center gap-2">
+              <span className="text-2xl">📋</span>
+              <span className="text-xs font-bold text-slate-700">No applications found</span>
+              <p className="text-[11px] text-slate-400 max-w-[220px]">
+                Apply to jobs with Copilot or add jobs manually to track your pipeline.
+              </p>
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            filteredApps.map((app) => (
+              <div
+                key={app.id}
+                className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col gap-2 hover:border-slate-300 transition-all"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-col">
+                    <h4 className="font-bold text-slate-900 text-xs leading-snug">{app.job_title}</h4>
+                    <span className="text-xs font-medium text-slate-600">{app.company_name}</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                      {Math.round(app.ats_score)}%
+                    </span>
+
+                    <select
+                      value={app.status}
+                      onChange={(e) => handleUpdateStatus(app.id, e.target.value)}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-pointer ${getStatusBadge(
+                        app.status
+                      )}`}
+                    >
+                      <option value="DRAFT">DRAFT</option>
+                      <option value="APPLIED">APPLIED</option>
+                      <option value="INTERVIEWING">INTERVIEWING</option>
+                      <option value="OFFERED">OFFERED</option>
+                      <option value="REJECTED">REJECTED</option>
+                    </select>
+                  </div>
+                </div>
+
+                {app.notes && (
+                  <p className="text-[11px] text-slate-500 bg-slate-50 p-2 rounded border border-slate-100">
+                    {app.notes}
+                  </p>
+                )}
+
+                <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-100">
+                  <span>Applied: {new Date(app.applied_at || Date.now()).toLocaleDateString()}</span>
+
+                  <div className="flex items-center gap-2">
+                    {app.job_url && (
+                      <a
+                        href={app.job_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-indigo-600 hover:underline"
+                      >
+                        View Post ↗
+                      </a>
+                    )}
+                    <button
+                      onClick={() => handleDelete(app.id)}
+                      className="text-slate-400 hover:text-rose-500 transition-colors"
+                      title="Delete Application"
+                    >
+                      ✕ Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* Manual Add Modal */}
       {showAddModal && (

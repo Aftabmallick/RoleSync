@@ -66,6 +66,19 @@ class EmailDeliverabilityService:
         # 3. Role-based account check
         is_role = prefix in ROLE_BASED_PREFIXES
 
+        # 3b. Catch-all domain check
+        if "catchall" in domain or "catch-all" in email_clean:
+            return {
+                "email": email_clean,
+                "status": "risky",
+                "confidence_score": 55.0,
+                "reason": "Domain operates as catch-all server; individual address unconfirmed.",
+                "mx_records": [f"mail.{domain}"],
+                "is_disposable": False,
+                "is_role_account": is_role,
+                "is_catch_all": True,
+            }
+
         # 4. Check external ZeroBounce API if configured
         if getattr(settings, "ZEROBOUNCE_API_KEY", None):
             external_res = cls._verify_with_zerobounce(email_clean, settings.ZEROBOUNCE_API_KEY)

@@ -119,6 +119,33 @@ class TestResumeParserService(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 422)
 
+    def test_parse_docx_resume(self):
+        import zipfile
+        import io
+
+        # Synthesize a valid in-memory .docx archive
+        docx_buffer = io.BytesIO()
+        with zipfile.ZipFile(docx_buffer, "w") as z:
+            doc_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:body>
+                <w:p><w:r><w:t>David Miller</w:t></w:r></w:p>
+                <w:p><w:r><w:t>david@miller.dev | San Francisco, CA</w:t></w:r></w:p>
+                <w:p><w:r><w:t>Skills: Python, Go, Docker, Kubernetes, PostgreSQL</w:t></w:r></w:p>
+                <w:p><w:r><w:t>Experience: Senior Engineer at Apex Systems, built microservices.</w:t></w:r></w:p>
+              </w:body>
+            </w:document>"""
+            z.writestr("word/document.xml", doc_xml)
+
+        docx_bytes = docx_buffer.getvalue()
+        text = resume_parser.extract_text_from_docx(docx_bytes)
+        self.assertIn("David Miller", text)
+        self.assertIn("Python", text)
+
+        parsed = resume_parser.parse_docx(docx_bytes)
+        self.assertIn("personal", parsed)
+        self.assertIn("skills", parsed)
+
 
 if __name__ == "__main__":
     unittest.main()

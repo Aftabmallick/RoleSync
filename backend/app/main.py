@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
 from app.core.config import settings
 from app.core.database import init_db
 from app.api.v1.router import api_v1_router
@@ -58,3 +59,16 @@ async def health_check():
         "service": "RoleSync Platform API",
         "version": settings.VERSION
     }
+
+
+@app.get("/openapi.json", include_in_schema=False)
+async def openapi_schema_alias():
+    """Alias route to serve OpenAPI schema at root /openapi.json as well as /api/v1/openapi.json."""
+    return JSONResponse(content=app.openapi())
+
+
+@app.get("/docs", include_in_schema=False)
+async def swagger_docs_alias():
+    """Alias redirect for Swagger UI at root /docs to /api/v1/docs."""
+    return RedirectResponse(url=f"{settings.API_V1_STR}/docs")
+

@@ -65,7 +65,7 @@ export interface MasterProfileData {
   preferences?: PreferencesData;
 }
 
-const DEFAULT_PROFILE: MasterProfileData = {
+export const SAMPLE_DEMO_PROFILE: MasterProfileData = {
   personal: {
     full_name: 'Alex Mercer',
     email: 'alex@mercer.dev',
@@ -155,16 +155,41 @@ export const BLANK_PROFILE: MasterProfileData = {
 
 interface ProfileEditorProps {
   onSave?: (profile: MasterProfileData) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
   apiBaseUrl?: string;
   onToast?: (type: 'success' | 'error' | 'warning' | 'info', message: string, title?: string) => void;
 }
 
 export const ProfileEditor: React.FC<ProfileEditorProps> = ({
   onSave,
+  onDirtyChange,
   apiBaseUrl = 'http://localhost:8000/api/v1',
   onToast,
 }) => {
-  const [profile, setProfile] = useState<MasterProfileData>(DEFAULT_PROFILE);
+  // Initialize with BLANK profile to prevent leaking mock identities
+  const [profile, setProfile] = useState<MasterProfileData>(BLANK_PROFILE);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const lastSavedProfileRef = useRef<string>(JSON.stringify(BLANK_PROFILE));
+  const isDirty = JSON.stringify(profile) !== lastSavedProfileRef.current;
+
+  useEffect(() => {
+    if (onDirtyChange) {
+      onDirtyChange(isDirty);
+    }
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes in your Master Profile.';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
   const [newSkill, setNewSkill] = useState<string>('');
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -196,6 +221,9 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
   const [activeExpBulletIdx, setActiveExpBulletIdx] = useState<number | null>(null);
   const [newBulletText, setNewBulletText] = useState<string>('');
 
+  // Stepper navigation tab state (P2-5 Segmentation)
+  const [activeStep, setActiveStep] = useState<'contact' | 'experience' | 'skills' | 'projects'>('contact');
+
   // New project form states
   const [projName, setProjName] = useState<string>('');
   const [projSubtitle, setProjSubtitle] = useState<string>('');
@@ -209,18 +237,20 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
     // 1. Load from extension local storage
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       chrome.storage.local.get('rolesync_master_profile', (res) => {
-        if (res.rolesync_master_profile) {
+        if (res.rolesync_master_profile && res.rolesync_master_profile.personal?.full_name) {
           setProfile(res.rolesync_master_profile);
+          lastSavedProfileRef.current = JSON.stringify(res.rolesync_master_profile);
         } else {
           // Fetch from backend
           fetchWithAuth(`${apiBaseUrl}/profile`)
             .then((r) => r.json())
             .then((data) => {
-              if (data.profile) {
+              if (data.profile && data.profile.personal?.full_name && data.profile.personal.full_name !== 'Alex Mercer') {
                 setProfile(data.profile);
+                lastSavedProfileRef.current = JSON.stringify(data.profile);
               }
             })
-            .catch((e) => console.log('[RoleSync] Backend offline, using defaults:', e));
+            .catch((e) => console.log('[RoleSync] Backend offline, keeping blank profile:', e));
         }
       });
     }
@@ -321,14 +351,10 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
   const handleSaveVault = async () => {
     setIsSaving(true);
     setSaveStatus('Encrypting with AES-256 HKDF...');
+    setFieldErrors({});
 
     try {
-      // 1. Save locally in extension storage
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        await chrome.storage.local.set({ rolesync_master_profile: profile });
-      }
-
-      // 2. Sync to backend vault
+      // 1. Sync to backend vault
       const res = await fetchWithAuth(`${apiBaseUrl}/profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -338,22 +364,54 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
       if (res.ok) {
         const data = await res.json();
         setSaveStatus(`✓ Saved & Encrypted (v${data.version})`);
-      } else {
-        setSaveStatus('✓ Saved locally in browser vault');
-      }
+        setFieldErrors({});
+        lastSavedProfileRef.current = JSON.stringify(profile);
 
-      if (onSave) {
-        onSave(profile);
+        // Also update local storage
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+          await chrome.storage.local.set({ rolesync_master_profile: profile });
+        }
+
+        if (onSave) {
+          onSave(profile);
+        }
+      } else {
+        try {
+          const errData = await res.json();
+          if (errData?.invalid_params && Array.isArray(errData.invalid_params)) {
+            const errMap: Record<string, string> = {};
+            errData.invalid_params.forEach((p: { name: string; reason: string }) => {
+              const key = p.name.replace(/^(body\.|personal\.)/, '');
+              errMap[key] = p.reason;
+            });
+            setFieldErrors(errMap);
+            setSaveStatus('⚠️ Validation failed: check highlighted fields');
+            if (onToast) {
+              onToast('error', errData.detail || 'Validation failed. Please correct highlighted fields.', 'Validation Error');
+            }
+          } else {
+            setSaveStatus(`⚠️ Save failed (${res.status})`);
+            if (onToast) onToast('error', errData?.detail || `Server returned ${res.status}`, 'Save Failed');
+          }
+        } catch {
+          setSaveStatus(`⚠️ Save failed (${res.status})`);
+          if (onToast) onToast('error', `Server returned HTTP ${res.status}`, 'Save Failed');
+        }
       }
     } catch (e) {
       console.warn('[RoleSync] Could not reach backend, stored locally:', e);
-      setSaveStatus('✓ Saved locally in browser storage');
+      // Fallback only on genuine connection failure
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        await chrome.storage.local.set({ rolesync_master_profile: profile });
+      }
+      lastSavedProfileRef.current = JSON.stringify(profile);
+      setSaveStatus('✓ Saved locally in browser storage (offline mode)');
       if (onSave) {
         onSave(profile);
       }
     } finally {
       setIsSaving(false);
-      setTimeout(() => setSaveStatus(null), 4000);
+      setTimeout(() => setSaveStatus(null), 5000);
     }
   };
 
@@ -531,21 +589,33 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
   };
 
   const handleResetDefault = () => {
-    if (confirm('Reset Master Profile to sample data (Alex Mercer)?')) {
-      setProfile(DEFAULT_PROFILE);
-      setSaveStatus('✓ Reset to sample profile');
-      setTimeout(() => setSaveStatus(null), 3000);
-      if (onToast) onToast('info', 'Reset Master Profile to demo profile (Alex Mercer).', 'Profile Reset');
+    if (isDirty) {
+      if (!confirm('You have unsaved changes in your Master Profile. Discard and load sample demo profile?')) {
+        return;
+      }
+    } else if (!confirm('Load sample demo data? (Note: Do not submit real job applications with demo data).')) {
+      return;
     }
+    setProfile(SAMPLE_DEMO_PROFILE);
+    setFieldErrors({});
+    setSaveStatus('✓ Loaded demo sample profile');
+    setTimeout(() => setSaveStatus(null), 3000);
+    if (onToast) onToast('info', 'Loaded demo sample profile.', 'Profile Preview');
   };
 
   const handleClearProfile = () => {
-    if (confirm('Clear entire Master Profile and start with a blank form?')) {
-      setProfile(BLANK_PROFILE);
-      setSaveStatus('✓ Profile cleared');
-      setTimeout(() => setSaveStatus(null), 3000);
-      if (onToast) onToast('info', 'Profile cleared. Enter your details or upload a resume PDF.', 'Blank Profile Started');
+    if (isDirty) {
+      if (!confirm('You have unsaved changes in your Master Profile. Discard and clear entire form?')) {
+        return;
+      }
+    } else if (!confirm('Clear entire Master Profile and start with a blank form?')) {
+      return;
     }
+    setProfile(BLANK_PROFILE);
+    setFieldErrors({});
+    setSaveStatus('✓ Profile cleared');
+    setTimeout(() => setSaveStatus(null), 3000);
+    if (onToast) onToast('info', 'Profile cleared. Enter your details or upload a resume PDF.', 'Blank Profile Started');
   };
 
   return (
@@ -571,7 +641,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-lg">📄</span>
             <div>
-              <h3 className="text-xs font-bold text-slate-900">Upload Base Resume (PDF)</h3>
+              <h3 className="text-xs font-bold text-slate-900">Upload Base Resume (PDF / Word DOCX)</h3>
               <p className="text-[10px] text-slate-500">Auto-extracts contact info, canonical skills, roles & verified metrics</p>
             </div>
           </div>
@@ -586,7 +656,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
         <input
           type="file"
           ref={fileInputRef}
-          accept=".pdf,.txt"
+          accept=".pdf,.docx,.doc,.txt"
           onChange={handleFileUpload}
           className="hidden"
         />
@@ -629,13 +699,20 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
 
       {/* Save Button & Status bar */}
       <div className="flex items-center justify-between gap-2 sticky top-0 bg-slate-50/95 backdrop-blur py-2 z-10">
-        <button
-          onClick={handleSaveVault}
-          disabled={isSaving}
-          className="py-2 px-3.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 flex items-center gap-1.5"
-        >
-          <span>{isSaving ? 'Encrypting...' : 'Save & Encrypt Vault'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSaveVault}
+            disabled={isSaving}
+            className="py-2 px-3.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>{isSaving ? 'Encrypting...' : 'Save & Encrypt Vault'}</span>
+          </button>
+          {isDirty && (
+            <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-300 px-2 py-1 rounded-md flex items-center gap-1 animate-pulse">
+              <span>⚠️</span> Unsaved Changes
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1.5">
           <input
             type="file"
@@ -668,7 +745,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
           <button
             onClick={handleResetDefault}
             className="py-1 px-2 text-[10px] font-semibold text-slate-400 hover:text-slate-600 bg-white border border-slate-200 rounded-lg shadow-xs"
-            title="Reset to default sample profile (Alex Mercer)"
+            title="Preview sample demo profile"
           >
             Demo Profile
           </button>
@@ -680,8 +757,81 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
         </div>
       </div>
 
-      {/* Contact Info Card */}
-      <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3">
+      {/* Onboarding Welcome Card for New / Unconfigured Users */}
+      {!profile.personal?.full_name?.trim() && (
+        <div className="p-3.5 bg-gradient-to-r from-indigo-50 to-sky-50 border border-indigo-200 rounded-xl flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🚀</span>
+            <h3 className="text-xs font-bold text-indigo-950">Welcome to RoleSync Career Vault</h3>
+          </div>
+          <p className="text-[11px] text-slate-600 leading-relaxed">
+            Upload your existing resume PDF to parse your career history in 5 seconds, or fill in your details below to activate 1-Click ATS autofill.
+          </p>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="py-1 px-2.5 bg-indigo-600 text-white text-[11px] font-semibold rounded-md hover:bg-indigo-700 shadow-xs flex items-center gap-1"
+            >
+              <span>📄 Upload Resume PDF</span>
+            </button>
+            <button
+              onClick={handleResetDefault}
+              className="py-1 px-2.5 bg-white border border-slate-300 text-slate-700 text-[11px] font-medium rounded-md hover:bg-slate-50"
+            >
+              Preview Sample Demo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 4-Step Vault Stepper Navigation Bar (P2-5 Segmentation) */}
+      <div className="grid grid-cols-4 gap-1 p-1 bg-slate-200/70 rounded-xl text-center text-[10px] font-bold">
+        <button
+          onClick={() => setActiveStep('contact')}
+          className={`py-1.5 px-1 rounded-lg transition-all ${
+            activeStep === 'contact'
+              ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          1. Contact
+        </button>
+        <button
+          onClick={() => setActiveStep('experience')}
+          className={`py-1.5 px-1 rounded-lg transition-all ${
+            activeStep === 'experience'
+              ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          2. Experience
+        </button>
+        <button
+          onClick={() => setActiveStep('skills')}
+          className={`py-1.5 px-1 rounded-lg transition-all ${
+            activeStep === 'skills'
+              ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          3. Skills & Auth
+        </button>
+        <button
+          onClick={() => setActiveStep('projects')}
+          className={`py-1.5 px-1 rounded-lg transition-all ${
+            activeStep === 'projects'
+              ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          4. Projects & Edu
+        </button>
+      </div>
+
+      {activeStep === 'contact' && (
+        <>
+          {/* Contact Info Card */}
+          <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3">
         <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
           1. Contact Information
         </h3>
@@ -691,84 +841,144 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
             <input
               type="text"
               value={profile.personal.full_name}
-              onChange={(e) =>
+              onChange={(e) => {
                 setProfile({
                   ...profile,
                   personal: { ...profile.personal, full_name: e.target.value },
-                })
-              }
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                });
+                if (fieldErrors['full_name']) setFieldErrors(prev => ({ ...prev, full_name: '' }));
+              }}
+              className={`w-full px-2.5 py-1.5 border rounded-lg text-xs focus:outline-none ${
+                fieldErrors['full_name']
+                  ? 'border-rose-500 ring-2 ring-rose-200'
+                  : 'border-slate-300 focus:ring-2 focus:ring-indigo-500'
+              }`}
             />
+            {fieldErrors['full_name'] && (
+              <span className="text-[10px] text-rose-600 font-semibold mt-0.5 block">
+                ⚠️ {fieldErrors['full_name']}
+              </span>
+            )}
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Email</label>
             <input
               type="email"
               value={profile.personal.email}
-              onChange={(e) =>
+              onChange={(e) => {
                 setProfile({
                   ...profile,
                   personal: { ...profile.personal, email: e.target.value },
-                })
-              }
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                });
+                if (fieldErrors['email']) setFieldErrors(prev => ({ ...prev, email: '' }));
+              }}
+              className={`w-full px-2.5 py-1.5 border rounded-lg text-xs focus:outline-none ${
+                fieldErrors['email']
+                  ? 'border-rose-500 ring-2 ring-rose-200'
+                  : 'border-slate-300 focus:ring-2 focus:ring-indigo-500'
+              }`}
             />
+            {fieldErrors['email'] && (
+              <span className="text-[10px] text-rose-600 font-semibold mt-0.5 block">
+                ⚠️ {fieldErrors['email']}
+              </span>
+            )}
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Phone</label>
             <input
               type="text"
               value={profile.personal.phone}
-              onChange={(e) =>
+              onChange={(e) => {
                 setProfile({
                   ...profile,
                   personal: { ...profile.personal, phone: e.target.value },
-                })
-              }
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                });
+                if (fieldErrors['phone']) setFieldErrors(prev => ({ ...prev, phone: '' }));
+              }}
+              className={`w-full px-2.5 py-1.5 border rounded-lg text-xs focus:outline-none ${
+                fieldErrors['phone']
+                  ? 'border-rose-500 ring-2 ring-rose-200'
+                  : 'border-slate-300 focus:ring-2 focus:ring-indigo-500'
+              }`}
             />
+            {fieldErrors['phone'] && (
+              <span className="text-[10px] text-rose-600 font-semibold mt-0.5 block">
+                ⚠️ {fieldErrors['phone']}
+              </span>
+            )}
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Location</label>
             <input
               type="text"
               value={profile.personal.location}
-              onChange={(e) =>
+              onChange={(e) => {
                 setProfile({
                   ...profile,
                   personal: { ...profile.personal, location: e.target.value },
-                })
-              }
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                });
+                if (fieldErrors['location']) setFieldErrors(prev => ({ ...prev, location: '' }));
+              }}
+              className={`w-full px-2.5 py-1.5 border rounded-lg text-xs focus:outline-none ${
+                fieldErrors['location']
+                  ? 'border-rose-500 ring-2 ring-rose-200'
+                  : 'border-slate-300 focus:ring-2 focus:ring-indigo-500'
+              }`}
             />
+            {fieldErrors['location'] && (
+              <span className="text-[10px] text-rose-600 font-semibold mt-0.5 block">
+                ⚠️ {fieldErrors['location']}
+              </span>
+            )}
           </div>
           <div className="col-span-2">
             <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">LinkedIn Handle/URL</label>
             <input
               type="text"
               value={profile.personal.linkedin}
-              onChange={(e) =>
+              onChange={(e) => {
                 setProfile({
                   ...profile,
                   personal: { ...profile.personal, linkedin: e.target.value },
-                })
-              }
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                });
+                if (fieldErrors['linkedin']) setFieldErrors(prev => ({ ...prev, linkedin: '' }));
+              }}
+              className={`w-full px-2.5 py-1.5 border rounded-lg text-xs focus:outline-none ${
+                fieldErrors['linkedin']
+                  ? 'border-rose-500 ring-2 ring-rose-200'
+                  : 'border-slate-300 focus:ring-2 focus:ring-indigo-500'
+              }`}
             />
+            {fieldErrors['linkedin'] && (
+              <span className="text-[10px] text-rose-600 font-semibold mt-0.5 block">
+                ⚠️ {fieldErrors['linkedin']}
+              </span>
+            )}
           </div>
           <div className="col-span-2">
             <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">GitHub Profile URL</label>
             <input
               type="text"
               value={profile.personal.github}
-              onChange={(e) =>
+              onChange={(e) => {
                 setProfile({
                   ...profile,
                   personal: { ...profile.personal, github: e.target.value },
-                })
-              }
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                });
+                if (fieldErrors['github']) setFieldErrors(prev => ({ ...prev, github: '' }));
+              }}
+              className={`w-full px-2.5 py-1.5 border rounded-lg text-xs focus:outline-none ${
+                fieldErrors['github']
+                  ? 'border-rose-500 ring-2 ring-rose-200'
+                  : 'border-slate-300 focus:ring-2 focus:ring-indigo-500'
+              }`}
             />
+            {fieldErrors['github'] && (
+              <span className="text-[10px] text-rose-600 font-semibold mt-0.5 block">
+                ⚠️ {fieldErrors['github']}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -785,58 +995,38 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
           rows={3}
           maxLength={600}
           value={profile.summary}
-          onChange={(e) => setProfile({ ...profile, summary: e.target.value })}
-          className="w-full p-2.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none leading-relaxed"
+          onChange={(e) => {
+            setProfile({ ...profile, summary: e.target.value });
+            if (fieldErrors['summary']) setFieldErrors(prev => ({ ...prev, summary: '' }));
+          }}
+          className={`w-full p-2.5 border rounded-lg text-xs focus:outline-none resize-none leading-relaxed ${
+            fieldErrors['summary']
+              ? 'border-rose-500 ring-2 ring-rose-200'
+              : 'border-slate-300 focus:ring-2 focus:ring-indigo-500'
+          }`}
           placeholder="Brief summary of your professional background..."
         />
+        {fieldErrors['summary'] && (
+          <span className="text-[10px] text-rose-600 font-semibold mt-0.5 block">
+            ⚠️ {fieldErrors['summary']}
+          </span>
+        )}
       </div>
 
-      {/* Skills Vault */}
-      <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-            3. Skills Vault ({profile.skills.length})
-          </h3>
-          <span className="text-[11px] text-slate-400">Canonical taxonomy</span>
-        </div>
-
-        {/* Add Skill input */}
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newSkill}
-            onChange={(e) => setNewSkill(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddSkill()}
-            placeholder="Add technology (e.g. React, Go, AWS)..."
-            className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-          />
-          <button
-            onClick={handleAddSkill}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-sm"
-          >
-            + Add
-          </button>
-        </div>
-
-        {/* Skill badges */}
-        <div className="flex flex-wrap gap-1.5 pt-1 max-h-36 overflow-y-auto">
-          {profile.skills.map((s, idx) => (
-            <span
-              key={idx}
-              className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 text-[11px] font-medium px-2 py-0.5 rounded-md border border-indigo-100"
-            >
-              {s.name}
-              <button
-                onClick={() => handleRemoveSkill(s.name)}
-                className="text-indigo-400 hover:text-rose-600 font-bold ml-0.5 text-xs"
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
+      <div className="flex justify-end pt-1">
+        <button
+          onClick={() => setActiveStep('experience')}
+          className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+        >
+          <span>Next: Career Experience ➔</span>
+        </button>
       </div>
+    </>
+  )}
 
+  {/* STEP 2: CAREER EXPERIENCE */}
+  {activeStep === 'experience' && (
+    <>
       {/* Career Experience Vault */}
       <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3">
         <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
@@ -976,6 +1166,235 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
         </div>
       </div>
 
+      <div className="flex items-center justify-between pt-1">
+        <button
+          onClick={() => setActiveStep('contact')}
+          className="py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg transition-all"
+        >
+          ⬅ Back: Contact
+        </button>
+        <button
+          onClick={() => setActiveStep('skills')}
+          className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-sm transition-all"
+        >
+          Next: Skills & Auth ➔
+        </button>
+      </div>
+    </>
+  )}
+
+  {/* STEP 3: SKILLS & WORK AUTHORIZATION */}
+  {activeStep === 'skills' && (
+    <>
+      {/* 3. Skills Vault */}
+      <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+            3. Skills Vault ({profile.skills.length})
+          </h3>
+          <span className="text-[11px] text-slate-400">Canonical taxonomy</span>
+        </div>
+
+        {/* Add Skill input */}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newSkill}
+            onChange={(e) => setNewSkill(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddSkill()}
+            placeholder="Add technology (e.g. React, Go, AWS)..."
+            className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+          />
+          <button
+            onClick={handleAddSkill}
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-sm"
+          >
+            + Add
+          </button>
+        </div>
+
+        {/* Skill badges */}
+        <div className="flex flex-wrap gap-1.5 pt-1 max-h-36 overflow-y-auto">
+          {profile.skills.map((s, idx) => (
+            <span
+              key={idx}
+              className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 text-[11px] font-medium px-2 py-0.5 rounded-md border border-indigo-100"
+            >
+              {s.name}
+              <button
+                onClick={() => handleRemoveSkill(s.name)}
+                className="text-indigo-400 hover:text-rose-600 font-bold ml-0.5 text-xs"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* 7. Work Authorization & Screening Preferences */}
+      <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3">
+        <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+          Work Authorization & Screening Preferences
+        </h3>
+        <p className="text-[11px] text-slate-500">
+          Used by Autopilot and 1-Click Autofill to answer standard application questions accurately.
+        </p>
+
+        <div className="grid grid-cols-1 gap-2.5 text-xs">
+          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
+            <div>
+              <span className="font-semibold text-slate-800">Legally authorized to work in target country?</span>
+              <p className="text-[10px] text-slate-500">Common screening question on Workday, Greenhouse & Lever</p>
+            </div>
+            <div className="flex gap-2">
+              <label className="flex items-center gap-1 text-[11px] font-medium cursor-pointer">
+                <input
+                  type="radio"
+                  name="legally_authorized"
+                  checked={profile.preferences?.legally_authorized !== false}
+                  onChange={() =>
+                    setProfile({
+                      ...profile,
+                      preferences: { ...profile.preferences, legally_authorized: true },
+                    })
+                  }
+                />
+                Yes
+              </label>
+              <label className="flex items-center gap-1 text-[11px] font-medium cursor-pointer">
+                <input
+                  type="radio"
+                  name="legally_authorized"
+                  checked={profile.preferences?.legally_authorized === false}
+                  onChange={() =>
+                    setProfile({
+                      ...profile,
+                      preferences: { ...profile.preferences, legally_authorized: false },
+                    })
+                  }
+                />
+                No
+              </label>
+            </div>
+          </div>
+
+          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
+            <div>
+              <span className="font-semibold text-slate-800">Requires visa sponsorship now or in the future?</span>
+              <p className="text-[10px] text-slate-500">H-1B, TN, O-1 or other employment visa sponsorship</p>
+            </div>
+            <div className="flex gap-2">
+              <label className="flex items-center gap-1 text-[11px] font-medium cursor-pointer">
+                <input
+                  type="radio"
+                  name="requires_sponsorship"
+                  checked={profile.preferences?.requires_sponsorship === true}
+                  onChange={() =>
+                    setProfile({
+                      ...profile,
+                      preferences: { ...profile.preferences, requires_sponsorship: true },
+                    })
+                  }
+                />
+                Yes
+              </label>
+              <label className="flex items-center gap-1 text-[11px] font-medium cursor-pointer">
+                <input
+                  type="radio"
+                  name="requires_sponsorship"
+                  checked={profile.preferences?.requires_sponsorship !== true}
+                  onChange={() =>
+                    setProfile({
+                      ...profile,
+                      preferences: { ...profile.preferences, requires_sponsorship: false },
+                    })
+                  }
+                />
+                No
+              </label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">EEO Gender</label>
+              <select
+                value={profile.preferences?.gender || 'Decline to self-identify'}
+                onChange={(e) =>
+                  setProfile({
+                    ...profile,
+                    preferences: { ...profile.preferences, gender: e.target.value },
+                  })
+                }
+                className="w-full p-1.5 border border-slate-300 rounded text-xs bg-white"
+              >
+                <option value="Decline to self-identify">Decline to state</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Non-Binary">Non-Binary</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Veteran Status</label>
+              <select
+                value={profile.preferences?.veteran_status || 'I am not a protected veteran'}
+                onChange={(e) =>
+                  setProfile({
+                    ...profile,
+                    preferences: { ...profile.preferences, veteran_status: e.target.value },
+                  })
+                }
+                className="w-full p-1.5 border border-slate-300 rounded text-xs bg-white"
+              >
+                <option value="I am not a protected veteran">Not a veteran</option>
+                <option value="I identify as a protected veteran">Protected veteran</option>
+                <option value="I decline to self-identify">Decline to state</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Disability Status</label>
+              <select
+                value={profile.preferences?.disability_status || 'No, I do not have a disability'}
+                onChange={(e) =>
+                  setProfile({
+                    ...profile,
+                    preferences: { ...profile.preferences, disability_status: e.target.value },
+                  })
+                }
+                className="w-full p-1.5 border border-slate-300 rounded text-xs bg-white"
+              >
+                <option value="No, I do not have a disability">No disability</option>
+                <option value="Yes, I have a disability">Yes, disability</option>
+                <option value="I decline to self-identify">Decline to state</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between pt-1">
+        <button
+          onClick={() => setActiveStep('experience')}
+          className="py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg transition-all"
+        >
+          ⬅ Back: Experience
+        </button>
+        <button
+          onClick={() => setActiveStep('projects')}
+          className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-sm transition-all"
+        >
+          Next: Projects & Edu ➔
+        </button>
+      </div>
+    </>
+  )}
+
+  {/* STEP 4: PROJECTS & EDUCATION */}
+  {activeStep === 'projects' && (
+    <>
       {/* 5. Featured Projects Vault */}
       <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3">
         <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
@@ -1183,148 +1602,23 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
         </div>
       </div>
 
-      {/* 7. Work Authorization & Screening Preferences */}
-      <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3">
-        <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-          7. Work Authorization & Screening Preferences
-        </h3>
-        <p className="text-[11px] text-slate-500">
-          Used by Autopilot and 1-Click Autofill to answer standard application questions accurately.
-        </p>
-
-        <div className="grid grid-cols-1 gap-2.5 text-xs">
-          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
-            <div>
-              <span className="font-semibold text-slate-800">Legally authorized to work in target country?</span>
-              <p className="text-[10px] text-slate-500">Common screening question on Workday, Greenhouse & Lever</p>
-            </div>
-            <div className="flex gap-2">
-              <label className="flex items-center gap-1 text-[11px] font-medium cursor-pointer">
-                <input
-                  type="radio"
-                  name="legally_authorized"
-                  checked={profile.preferences?.legally_authorized !== false}
-                  onChange={() =>
-                    setProfile({
-                      ...profile,
-                      preferences: { ...profile.preferences, legally_authorized: true },
-                    })
-                  }
-                />
-                Yes
-              </label>
-              <label className="flex items-center gap-1 text-[11px] font-medium cursor-pointer">
-                <input
-                  type="radio"
-                  name="legally_authorized"
-                  checked={profile.preferences?.legally_authorized === false}
-                  onChange={() =>
-                    setProfile({
-                      ...profile,
-                      preferences: { ...profile.preferences, legally_authorized: false },
-                    })
-                  }
-                />
-                No
-              </label>
-            </div>
-          </div>
-
-          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
-            <div>
-              <span className="font-semibold text-slate-800">Requires visa sponsorship now or in the future?</span>
-              <p className="text-[10px] text-slate-500">H-1B, TN, O-1 or other employment visa sponsorship</p>
-            </div>
-            <div className="flex gap-2">
-              <label className="flex items-center gap-1 text-[11px] font-medium cursor-pointer">
-                <input
-                  type="radio"
-                  name="requires_sponsorship"
-                  checked={profile.preferences?.requires_sponsorship === true}
-                  onChange={() =>
-                    setProfile({
-                      ...profile,
-                      preferences: { ...profile.preferences, requires_sponsorship: true },
-                    })
-                  }
-                />
-                Yes
-              </label>
-              <label className="flex items-center gap-1 text-[11px] font-medium cursor-pointer">
-                <input
-                  type="radio"
-                  name="requires_sponsorship"
-                  checked={profile.preferences?.requires_sponsorship !== true}
-                  onChange={() =>
-                    setProfile({
-                      ...profile,
-                      preferences: { ...profile.preferences, requires_sponsorship: false },
-                    })
-                  }
-                />
-                No
-              </label>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 pt-1">
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">EEO Gender</label>
-              <select
-                value={profile.preferences?.gender || 'Decline to self-identify'}
-                onChange={(e) =>
-                  setProfile({
-                    ...profile,
-                    preferences: { ...profile.preferences, gender: e.target.value },
-                  })
-                }
-                className="w-full p-1.5 border border-slate-300 rounded text-xs bg-white"
-              >
-                <option value="Decline to self-identify">Decline to state</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Non-Binary">Non-Binary</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Veteran Status</label>
-              <select
-                value={profile.preferences?.veteran_status || 'I am not a protected veteran'}
-                onChange={(e) =>
-                  setProfile({
-                    ...profile,
-                    preferences: { ...profile.preferences, veteran_status: e.target.value },
-                  })
-                }
-                className="w-full p-1.5 border border-slate-300 rounded text-xs bg-white"
-              >
-                <option value="I am not a protected veteran">Not a veteran</option>
-                <option value="I identify as a protected veteran">Protected veteran</option>
-                <option value="I decline to self-identify">Decline to state</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Disability Status</label>
-              <select
-                value={profile.preferences?.disability_status || 'No, I do not have a disability'}
-                onChange={(e) =>
-                  setProfile({
-                    ...profile,
-                    preferences: { ...profile.preferences, disability_status: e.target.value },
-                  })
-                }
-                className="w-full p-1.5 border border-slate-300 rounded text-xs bg-white"
-              >
-                <option value="No, I do not have a disability">No disability</option>
-                <option value="Yes, I have a disability">Yes, disability</option>
-                <option value="I decline to self-identify">Decline to state</option>
-              </select>
-            </div>
-          </div>
-        </div>
+      <div className="flex items-center justify-between pt-1">
+        <button
+          onClick={() => setActiveStep('skills')}
+          className="py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg transition-all"
+        >
+          ⬅ Back: Skills & Auth
+        </button>
+        <button
+          onClick={handleSaveVault}
+          disabled={isSaving}
+          className="py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+        >
+          <span>{isSaving ? 'Encrypting...' : '💾 Save & Encrypt Vault'}</span>
+        </button>
       </div>
+    </>
+  )}
     </div>
   );
 };

@@ -1,10 +1,52 @@
+import json
+import logging
 import uuid
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, status
+from typing import Optional, Dict, Any
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, Depends, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
+from app.core.jwt import get_optional_user_id
+from app.core.security import EnvelopeEncryption
+from app.models.profile import MasterProfile
+from app.api.v1.endpoints.profile import encrypted_profiles_db, to_uuid
 from app.schemas.tailor import TailorRequest, TailorTaskResponse, TailorResultResponse
 from app.tasks.tailor_tasks import orchestrator, task_store
 from app.core.limiter import limiter
 
+logger = logging.getLogger("rolesync.tailor")
+
 router = APIRouter(prefix="/tailor", tags=["Resume Tailoring"])
+
+
+def extract_candidate_name(profile: Dict[str, Any]) -> str:
+    """Extract candidate full name from various possible profile structures."""
+    if not isinstance(profile, dict):
+        return ""
+    personal = profile.get("personal") or profile.get("personal_info")
+    if isinstance(personal, dict):
+        name = personal.get("full_name") or personal.get("name") or ""
+        if name and str(name).strip():
+            return str(name).strip()
+    name = profile.get("full_name") or profile.get("name") or ""
+    return str(name).strip()
+
+
+def is_complete_profile(profile: Optional[Dict[str, Any]]) -> bool:
+    """Validates that candidate master profile has full_name, skills, and experience."""
+    if not profile or not isinstance(profile, dict):
+        return False
+    name = extract_candidate_name(profile)
+    if not name:
+        return False
+    skills = profile.get("skills")
+    if not skills or not isinstance(skills, list) or len(skills) == 0:
+        return False
+    experience = profile.get("experience")
+    if not experience or not isinstance(experience, list) or len(experience) == 0:
+        return False
+    return True
 
 
 @router.post("", response_model=TailorTaskResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -12,80 +54,75 @@ router = APIRouter(prefix="/tailor", tags=["Resume Tailoring"])
 async def enqueue_tailoring_task(
     request: Request,
     payload: TailorRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    user_id: Optional[str] = Depends(get_optional_user_id),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Enqueues an asynchronous resume tailoring task.
     Returns 202 Accepted with a task_id to prevent HTTP gateway timeouts.
     """
+    effective_profile = dict(payload.master_profile) if payload.master_profile else None
+
+    # If payload.master_profile is missing or incomplete, attempt to load from database for authenticated user
+    if not is_complete_profile(effective_profile):
+        db_profile = None
+        if user_id:
+            try:
+                u_id = to_uuid(user_id)
+                stmt = select(MasterProfile).where(MasterProfile.user_id == u_id, MasterProfile.is_current == True)
+                res = await db.execute(stmt)
+                record = res.scalars().first()
+                if record and record.encrypted_profile_data and record.encryption_iv:
+                    decrypted_bytes = EnvelopeEncryption.decrypt(
+                        ciphertext=record.encrypted_profile_data,
+                        iv=record.encryption_iv,
+                        user_id=str(user_id)
+                    )
+                    db_profile = json.loads(decrypted_bytes.decode("utf-8"))
+            except Exception as e:
+                logger.warning(f"Failed to query database profile for user {user_id}: {e}")
+                db_profile = None
+
+            if not db_profile and user_id in encrypted_profiles_db:
+                in_memory = encrypted_profiles_db.get(user_id)
+                if in_memory and "ciphertext" in in_memory and "iv" in in_memory:
+                    try:
+                        decrypted_bytes = EnvelopeEncryption.decrypt(
+                            ciphertext=in_memory["ciphertext"],
+                            iv=in_memory["iv"],
+                            user_id=str(user_id)
+                        )
+                        db_profile = json.loads(decrypted_bytes.decode("utf-8"))
+                    except Exception as e:
+                        logger.warning(f"Failed to decrypt in-memory profile for user {user_id}: {e}")
+                        db_profile = None
+
+        if is_complete_profile(db_profile):
+            effective_profile = db_profile
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Master profile with candidate identity is required for tailoring"
+            )
+
+    # Ensure experience bullet IDs are assigned
+    for i, exp in enumerate(effective_profile.get("experience", [])):
+        if not exp.get("bullets"):
+            exp["bullets"] = [
+                {
+                    "id": f"b_{i+1}_1",
+                    "text": f"Engineered scalable infrastructure and microservices at {exp.get('company', 'Tech Organization')}."
+                }
+            ]
+        else:
+            for j, b in enumerate(exp["bullets"]):
+                if isinstance(b, dict) and not b.get("id"):
+                    b["id"] = f"b_{i+1}_{j+1}"
+
     task_id = f"task_{uuid.uuid4().hex}"
     task_store[task_id] = {"status": "QUEUED", "stage": "INITIALIZED"}
-
-    # Mock candidate Master Profile for demonstration / tests
-    sample_master_profile = {
-        "personal": {
-            "full_name": "Alex Mercer",
-            "email": "alex@mercer.dev",
-            "phone": "+1 555-019-2834",
-            "location": "San Francisco, CA",
-            "linkedin": "linkedin.com/in/alex-mercer"
-        },
-        "skills": [
-            {"name": "Python"},
-            {"name": "FastAPI"},
-            {"name": "PostgreSQL"},
-            {"name": "Docker"},
-            {"name": "Kubernetes"},
-            {"name": "Redis"}
-        ],
-        "experience": [
-            {
-                "company": "Apex Systems",
-                "role": "Senior Software Engineer",
-                "start_date": "2021",
-                "end_date": "Present",
-                "location": "San Francisco, CA",
-                "bullets": [
-                    {
-                        "id": "b_apex_1",
-                        "text": "Refactored payment gateway microservice, reducing response latency by 1.5s and saving $1,500,000 annually across 10x traffic volume."
-                    },
-                    {
-                        "id": "b_apex_2",
-                        "text": "Architected PostgreSQL distributed read replicas improving read throughput by 35%."
-                    }
-                ]
-            }
-        ],
-        "education": [
-            {
-                "institution": "University of California, Berkeley",
-                "degree": "B.S.",
-                "field": "Computer Science",
-                "end_date": "2020",
-                "gpa": "3.85"
-            }
-        ]
-    }
-
-    effective_profile = dict(payload.master_profile) if payload.master_profile else dict(sample_master_profile)
-
-    # Ensure experience is non-empty and has at least one verified bullet point
-    if not effective_profile.get("experience"):
-        effective_profile["experience"] = sample_master_profile["experience"]
-    else:
-        for i, exp in enumerate(effective_profile["experience"]):
-            if not exp.get("bullets"):
-                exp["bullets"] = [
-                    {
-                        "id": f"b_{i+1}_1",
-                        "text": f"Engineered scalable infrastructure and microservices at {exp.get('company', 'Tech Organization')}."
-                    }
-                ]
-
-    # Ensure skills list is non-empty
-    if not effective_profile.get("skills"):
-        effective_profile["skills"] = sample_master_profile["skills"]
+    task_user_id = user_id or "usr_candidate"
 
     # Dispatch via Celery if worker/broker is available, otherwise fallback to in-process background_tasks
     dispatched_to_celery = False
@@ -97,7 +134,7 @@ async def enqueue_tailoring_task(
             run_tailoring_pipeline_task.apply_async(
                 kwargs={
                     "task_id": task_id,
-                    "user_id": "usr_demo_123",
+                    "user_id": task_user_id,
                     "master_profile": effective_profile,
                     "raw_jd": payload.raw_job_description,
                     "target_role": payload.target_role,
@@ -113,7 +150,7 @@ async def enqueue_tailoring_task(
         background_tasks.add_task(
             orchestrator.execute_tailoring_pipeline,
             task_id=task_id,
-            user_id="usr_demo_123",
+            user_id=task_user_id,
             master_profile=effective_profile,
             raw_jd=payload.raw_job_description,
             target_role=payload.target_role,

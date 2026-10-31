@@ -15,6 +15,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [fullName, setFullName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const { setAuth } = useSessionStore();
 
@@ -24,6 +25,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     e.preventDefault();
     setIsLoading(true);
     setErrorMsg(null);
+    setFieldErrors({});
 
     try {
       if (mode === 'register') {
@@ -53,7 +55,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         onClose();
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Authentication failed. Please verify credentials.');
+      if (err?.invalid_params && Array.isArray(err.invalid_params)) {
+        const errMap: Record<string, string> = {};
+        err.invalid_params.forEach((p: { name: string; reason: string }) => {
+          const key = p.name.replace(/^(body\.|personal\.)/, '');
+          errMap[key] = p.reason;
+        });
+        setFieldErrors(errMap);
+      }
+      setErrorMsg(err.detail || err.message || 'Authentication failed. Please verify credentials.');
     } finally {
       setIsLoading(false);
     }
@@ -62,6 +72,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const handleGoogleMock = async () => {
     setIsLoading(true);
     setErrorMsg(null);
+    setFieldErrors({});
     try {
       const data = await apiClient('/auth/google', {
         method: 'POST',
@@ -86,7 +97,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         {/* Header Tabs */}
         <div className="flex border-b border-slate-100 bg-slate-50/80">
           <button
-            onClick={() => { setMode('login'); setErrorMsg(null); }}
+            onClick={() => { setMode('login'); setErrorMsg(null); setFieldErrors({}); }}
             className={`flex-1 py-3 text-xs font-bold transition-colors ${
               mode === 'login'
                 ? 'text-indigo-600 bg-white border-b-2 border-indigo-600'
@@ -96,7 +107,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             Sign In
           </button>
           <button
-            onClick={() => { setMode('register'); setErrorMsg(null); }}
+            onClick={() => { setMode('register'); setErrorMsg(null); setFieldErrors({}); }}
             className={`flex-1 py-3 text-xs font-bold transition-colors ${
               mode === 'register'
                 ? 'text-indigo-600 bg-white border-b-2 border-indigo-600'
@@ -130,10 +141,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 type="text"
                 required
                 value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Alex Mercer"
-                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
+                onChange={(e) => {
+                  setFullName(e.target.value);
+                  if (fieldErrors['full_name']) setFieldErrors(prev => ({ ...prev, full_name: '' }));
+                }}
+                placeholder="Jane Doe"
+                className={`w-full px-3 py-2 text-xs border rounded-lg focus:outline-hidden focus:ring-2 ${
+                  fieldErrors['full_name']
+                    ? 'border-rose-500 ring-2 ring-rose-200'
+                    : 'border-slate-200 focus:ring-indigo-500/20 focus:border-indigo-600'
+                }`}
               />
+              {fieldErrors['full_name'] && (
+                <span className="text-[10px] text-rose-600 font-semibold mt-1 block">
+                  ⚠️ {fieldErrors['full_name']}
+                </span>
+              )}
             </div>
           )}
 
@@ -143,10 +166,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               type="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (fieldErrors['email']) setFieldErrors(prev => ({ ...prev, email: '' }));
+              }}
               placeholder="candidate@example.com"
-              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
+              className={`w-full px-3 py-2 text-xs border rounded-lg focus:outline-hidden focus:ring-2 ${
+                fieldErrors['email']
+                  ? 'border-rose-500 ring-2 ring-rose-200'
+                  : 'border-slate-200 focus:ring-indigo-500/20 focus:border-indigo-600'
+              }`}
             />
+            {fieldErrors['email'] && (
+              <span className="text-[10px] text-rose-600 font-semibold mt-1 block">
+                ⚠️ {fieldErrors['email']}
+              </span>
+            )}
           </div>
 
           <div>
@@ -156,10 +191,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               required
               minLength={6}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (fieldErrors['password']) setFieldErrors(prev => ({ ...prev, password: '' }));
+              }}
               placeholder="••••••••"
-              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
+              className={`w-full px-3 py-2 text-xs border rounded-lg focus:outline-hidden focus:ring-2 ${
+                fieldErrors['password']
+                  ? 'border-rose-500 ring-2 ring-rose-200'
+                  : 'border-slate-200 focus:ring-indigo-500/20 focus:border-indigo-600'
+              }`}
             />
+            {fieldErrors['password'] && (
+              <span className="text-[10px] text-rose-600 font-semibold mt-1 block">
+                ⚠️ {fieldErrors['password']}
+              </span>
+            )}
           </div>
 
           <button

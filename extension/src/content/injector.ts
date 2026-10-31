@@ -5,11 +5,15 @@ import { DOMAutofillEngine, FormMapping } from './DOMAutofillEngine';
 import { WorkdayWizardEngine } from './WorkdayWizardEngine';
 import { AppExtensionMessage } from '../types/messages';
 import { FrameworkAdapter } from './FrameworkAdapter';
+import { CopilotCapsule } from './CopilotCapsule';
+import { ClipboardDrawer } from './ClipboardDrawer';
 
-console.log('[RoleSync] Content script orchestrator initializing on host:', window.location.hostname);
+console.log('[RoleSync] Content script orchestrator initializing on host:', window.location.hostname, 'isTopFrame:', window === window.top);
 
+const isTopFrame = window === window.top;
 const extractor = new JobExtractorEngine();
 const autofillEngine = new DOMAutofillEngine();
+const capsule = isTopFrame ? new CopilotCapsule() : null;
 let workdayWizard: WorkdayWizardEngine | null = null;
 
 function getWorkdayWizard(): WorkdayWizardEngine {
@@ -27,6 +31,10 @@ async function runExtraction(): Promise<void> {
   try {
     const extracted = await extractor.extract();
     console.log('[RoleSync] Extracted job details:', extracted);
+
+    if (extracted.title || extracted.company) {
+      capsule?.updateJobInfo(extracted.title, extracted.company, extracted.atsProvider);
+    }
 
     chrome.runtime.sendMessage({
       action: 'JD_EXTRACTED',
@@ -233,6 +241,11 @@ chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
         } as AppExtensionMessage);
       })
       .then((res) => {
+        const hasIframes = document.querySelectorAll('iframe').length > 0 || !!res.hasCrossOriginIframes;
+        if (res.completed === 0 && hasIframes) {
+          console.warn('[RoleSync] Direct DOM autofill matched 0 fields with iframes detected. Launching ClipboardDrawer fallback.');
+          ClipboardDrawer.show(candidateProfile, resumeDataUri);
+        }
         sendResponse({ status: 'COMPLETED', result: res });
       })
       .catch((err) => {
@@ -254,15 +267,41 @@ chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
       const currentStage = wizard.detectCurrentStage();
       console.log(`[RoleSync] Current Workday stage detected: ${currentStage}, autoAdvance=${autoAdvance}`);
 
+      const fullName = candidateProfile?.personal?.full_name?.trim();
+      if (!fullName) {
+        chrome.runtime.sendMessage({
+          action: 'AUTOPILOT_PROGRESS',
+          correlationId: message.correlationId,
+          timestamp: Date.now(),
+          payload: {
+            taskId: message.correlationId,
+            stage: 'ERROR',
+            fieldsCompleted: 0,
+            fieldsFailed: 1,
+            nextStageReady: false,
+            isPausedForReview: false,
+            message: 'Please complete your Master Profile (Name, Contact Details) before launching autofill.',
+          },
+        } as AppExtensionMessage);
+        sendResponse({ status: 'ERROR', message: 'Profile incomplete' });
+        return;
+      }
+
+      const nameParts = fullName.split(/\s+/);
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      const location = candidateProfile?.personal?.location || '';
+      const locationParts = location.split(',');
+
       const candidateData = {
-        firstName: candidateProfile?.personal?.full_name?.split(' ')[0] || 'Alex',
-        lastName: candidateProfile?.personal?.full_name?.split(' ').slice(1).join(' ') || 'Mercer',
-        addressLine1: candidateProfile?.personal?.location || '100 Market St',
-        city: candidateProfile?.personal?.location?.split(',')[0] || 'San Francisco',
-        postalCode: '94105',
-        phone: candidateProfile?.personal?.phone || '+1 555-019-2834',
-        linkedinUrl: candidateProfile?.personal?.linkedin || 'https://linkedin.com/in/alex-mercer',
-        resumeFileName: `${candidateProfile?.personal?.full_name?.replace(/\s+/g, '_') || 'RoleSync'}_Resume.pdf`,
+        firstName,
+        lastName,
+        addressLine1: location || '',
+        city: locationParts[0]?.trim() || '',
+        postalCode: '',
+        phone: candidateProfile?.personal?.phone || '',
+        linkedinUrl: candidateProfile?.personal?.linkedin || '',
+        resumeFileName: `${fullName.replace(/\s+/g, '_')}_Resume.pdf`,
         legallyAuthorized: candidateProfile?.preferences?.legally_authorized ?? true,
         requiresSponsorship: candidateProfile?.preferences?.requires_sponsorship ?? false,
         gender: candidateProfile?.preferences?.gender || 'Decline to self-identify',
@@ -273,6 +312,25 @@ chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
       wizard
         .processCurrentStage(candidateData, resumeDataUri)
         .then((result) => {
+          if ((result.stage as string) === 'CAPTCHA_PAUSED') {
+            chrome.runtime.sendMessage({
+              action: 'AUTOPILOT_PROGRESS',
+              correlationId: message.correlationId,
+              timestamp: Date.now(),
+              payload: {
+                taskId: message.correlationId,
+                stage: 'CAPTCHA_PAUSED',
+                fieldsCompleted: 0,
+                fieldsFailed: 0,
+                nextStageReady: false,
+                isPausedForReview: true,
+                message: 'Security verification (CAPTCHA) detected on the career portal. Please complete the verification in the page, then continue.',
+              },
+            } as AppExtensionMessage);
+            sendResponse({ status: 'CAPTCHA_PAUSED', result });
+            return;
+          }
+
           const isReview = result.stage === 'REVIEW';
           chrome.runtime.sendMessage({
             action: 'AUTOPILOT_PROGRESS',
@@ -314,6 +372,11 @@ chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
           } as AppExtensionMessage);
         })
         .then((res) => {
+          const hasIframes = document.querySelectorAll('iframe').length > 0 || !!res.hasCrossOriginIframes;
+          if (res.completed === 0 && hasIframes) {
+            console.warn('[RoleSync] Autopilot matched 0 fields with iframes detected. Launching ClipboardDrawer fallback.');
+            ClipboardDrawer.show(candidateProfile, resumeDataUri);
+          }
           sendResponse({ status: 'COMPLETED', result: res });
         })
         .catch((err) => {
@@ -361,6 +424,20 @@ chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
     } else {
       sendResponse({ status: 'NOT_FOUND', message: 'No cover letter textarea detected on page' });
     }
+    return true;
+  }
+
+  // --- CLIPBOARD DRAWER ACTIONS ---
+  if (message.action === 'SHOW_CLIPBOARD_DRAWER') {
+    const { candidateProfile, resumeDataUri } = message.payload || {};
+    ClipboardDrawer.show(candidateProfile, resumeDataUri);
+    sendResponse({ status: 'COMPLETED' });
+    return true;
+  }
+
+  if (message.action === 'HIDE_CLIPBOARD_DRAWER') {
+    ClipboardDrawer.hide();
+    sendResponse({ status: 'COMPLETED' });
     return true;
   }
 });

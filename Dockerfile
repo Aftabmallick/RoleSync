@@ -24,9 +24,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl tar ca-cer
 # Application Runtime Stage
 FROM base AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     libpq-dev \
     fonts-liberation \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=typst-builder /usr/local/bin/typst /usr/local/bin/typst

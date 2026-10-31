@@ -365,6 +365,9 @@ async def upload_resume_file(
         if file.filename and file.filename.lower().endswith(".pdf"):
             profile_dict = resume_parser.parse_pdf(content)
             raw_text = resume_parser.extract_text_from_pdf(content)
+        elif file.filename and (file.filename.lower().endswith(".docx") or file.filename.lower().endswith(".doc")):
+            profile_dict = resume_parser.parse_docx(content)
+            raw_text = resume_parser.extract_text_from_docx(content)
         else:
             text = content.decode("utf-8", errors="ignore")
             profile_dict = resume_parser.parse_resume_text(text)

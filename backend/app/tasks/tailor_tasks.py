@@ -3,6 +3,8 @@ import base64
 import json
 import logging
 import asyncio
+import os
+import sys
 from typing import Dict, Any, Optional
 from celery import Celery
 from app.core.config import settings
@@ -83,6 +85,8 @@ celery_app = Celery(
     backend=settings.REDIS_URL
 )
 
+is_testing_env = bool("pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING") == "1")
+
 celery_app.conf.update(
     task_serializer="json",
     result_serializer="json",
@@ -90,6 +94,8 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
+    broker_connection_retry_on_startup=True,
+    task_always_eager=is_testing_env,
 )
 
 # Export standard names so `celery -A app.tasks.tailor_tasks worker` finds the application
@@ -282,7 +288,39 @@ class TailorPipelineOrchestrator:
                 except GuardrailViolationException as gve:
                     logger.warning(f"[Tailor Task {task_id}] Guardrail violation on attempt {attempt}: {gve}")
                     if attempt == max_retries:
-                        raise
+                        if gve.layer == "LAYER_3_NLI":
+                            logger.info(
+                                f"[Tailor Task {task_id}] Degrading Layer 3 NLI violation on attempt {attempt}: "
+                                f"reverting offending bullets to master originals."
+                            )
+                            target_bullet_id = gve.details.get("bullet_id") if gve.details else None
+                            for exp in draft.experience:
+                                for bullet in exp.bullet_points:
+                                    master_info = verifier.master_bullets_index.get(bullet.original_bullet_id, {})
+                                    master_orig = master_info.get("text", "") if isinstance(master_info, dict) else ""
+
+                                    is_offending = False
+                                    if target_bullet_id and bullet.original_bullet_id == target_bullet_id:
+                                        is_offending = True
+
+                                    if verifier.nli_client and master_orig:
+                                        scores = verifier.nli_client.predict_nli(premise=master_orig, hypothesis=bullet.tailored_text)
+                                        contradiction = scores.get("contradiction", 0.0)
+                                        entailment = scores.get("entailment", 1.0)
+                                        if contradiction > 0.15 or entailment < 0.88:
+                                            is_offending = True
+
+                                    if is_offending and master_orig:
+                                        bullet.tailored_text = master_orig
+                                        bullet.tag = "🛡️ Original Bullet Preserved (factual entailment boundary)"
+                                        bullet.preservation_tag = "🛡️ Original Bullet Preserved (factual entailment boundary)"
+                                        bullet.keywords_emphasized = []
+
+                            verifier.execute_all_layers(draft)
+                            verified_draft = draft
+                            break
+                        else:
+                            raise gve
 
             if not verified_draft:
                 raise RuntimeError("Failed to verify tailored draft against guardrails after max retries.")
@@ -365,7 +403,7 @@ class TailorPipelineOrchestrator:
 orchestrator = TailorPipelineOrchestrator()
 
 
-@celery_app.task(bind=True, name="rolesync.tailor_pipeline")
+@celery_app.task(bind=True, name="rolesync.tailor_pipeline", time_limit=60, soft_time_limit=45)
 def run_tailoring_pipeline_task(
     self,
     task_id: str,

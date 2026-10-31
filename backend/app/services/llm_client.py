@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 from typing import List, Dict, Any, Optional, Tuple
 from pydantic import BaseModel, Field
 from openai import OpenAI
@@ -33,20 +34,41 @@ class LLMClientService:
     Prioritizes NVIDIA NIM (DeepSeek V4.1 Flash) from environment,
     with automatic failover to deterministic fact-preserving synthesis.
     Enforces strict prompt injection filtering and zero-hallucination guardrails.
+    Includes active circuit breaker and fast request deadlines to guarantee responsiveness.
     """
+    _circuit_breaker_until: float = 0.0
+    DEFAULT_TIMEOUT_SEC: float = 4.0
 
     @classmethod
     def get_client(cls) -> Optional[OpenAI]:
         nvidia_key = getattr(settings, "NVIDIA_API_KEY", None) or os.getenv("NVIDIA_API_KEY")
         if nvidia_key:
             base_url = getattr(settings, "NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-            return OpenAI(base_url=base_url, api_key=nvidia_key)
+            return OpenAI(base_url=base_url, api_key=nvidia_key, timeout=cls.DEFAULT_TIMEOUT_SEC, max_retries=0)
         
         openai_key = getattr(settings, "OPENAI_API_KEY", None) or os.getenv("OPENAI_API_KEY")
         if openai_key:
-            return OpenAI(api_key=openai_key)
+            return OpenAI(api_key=openai_key, timeout=cls.DEFAULT_TIMEOUT_SEC, max_retries=0)
 
         return None
+
+    @classmethod
+    def _deterministic_rewrite(cls, original_bullets: List[Dict[str, str]], safe_keywords: List[str]) -> List[Dict[str, str]]:
+        """Fast, robust deterministic factual enhancement ensuring instant turnaround."""
+        enhanced: List[Dict[str, str]] = []
+        kw_pool = list(safe_keywords)
+        for idx, b in enumerate(original_bullets):
+            orig_text = b.get("text", "")
+            b_id = b.get("id", f"b_{idx}")
+            if kw_pool and not any(k.lower() in orig_text.lower() for k in kw_pool[:2]):
+                chosen_kw = ", ".join(k.title() for k in kw_pool[:2])
+                kw_pool = kw_pool[2:]
+                clean_text = orig_text.rstrip(".")
+                new_text = f"{clean_text} utilizing {chosen_kw} to optimize system performance and reliability."
+            else:
+                new_text = orig_text
+            enhanced.append({"id": b_id, "text": new_text})
+        return enhanced
 
     @classmethod
     def rewrite_bullets(
@@ -65,6 +87,11 @@ class LLMClientService:
         safe_role = GuardrailSanitizer.sanitize_prompt_input(target_role, max_length=150)
         safe_company = GuardrailSanitizer.sanitize_prompt_input(company_name, max_length=150)
         safe_keywords = [GuardrailSanitizer.sanitize_prompt_input(k, max_length=100) for k in required_keywords]
+
+        # Fast path if provider is in cooldown
+        if time.time() < cls._circuit_breaker_until:
+            logger.info("LLM circuit breaker active; using fast deterministic enhancement.")
+            return cls._deterministic_rewrite(original_bullets, safe_keywords)
         
         sanitized_bullets = []
         injection_detected = False
@@ -105,7 +132,8 @@ Original Bullets:
                     ],
                     temperature=0.2,
                     max_tokens=1024,
-                    response_format={"type": "json_object"}
+                    response_format={"type": "json_object"},
+                    timeout=cls.DEFAULT_TIMEOUT_SEC
                 )
                 content = resp.choices[0].message.content or ""
                 # Parse with Pydantic schema validation
@@ -126,24 +154,10 @@ Original Bullets:
                 if len(validated.bullets) == len(original_bullets):
                     return [b.model_dump() for b in validated.bullets]
             except Exception as e:
-                logger.warning(f"LLM bullet rewrite failed ({e}). Using deterministic enhancement.")
+                cls._circuit_breaker_until = time.time() + 120.0
+                logger.warning(f"LLM bullet rewrite failed ({e}). Circuit breaker activated for 120s. Using deterministic fallback.")
 
-        # Deterministic factual enhancement fallback
-        enhanced: List[Dict[str, str]] = []
-        kw_pool = list(safe_keywords)
-        for idx, b in enumerate(original_bullets):
-            orig_text = b.get("text", "")
-            b_id = b.get("id", f"b_{idx}")
-            if kw_pool and not any(k.lower() in orig_text.lower() for k in kw_pool[:2]):
-                chosen_kw = ", ".join(k.title() for k in kw_pool[:2])
-                kw_pool = kw_pool[2:]
-                clean_text = orig_text.rstrip(".")
-                new_text = f"{clean_text} utilizing {chosen_kw} to optimize system performance and reliability."
-            else:
-                new_text = orig_text
-            enhanced.append({"id": b_id, "text": new_text})
-
-        return enhanced
+        return cls._deterministic_rewrite(original_bullets, safe_keywords)
 
     @classmethod
     def generate_cover_letter(
@@ -172,6 +186,11 @@ Original Bullets:
             if GuardrailSanitizer.detect_prompt_injection(bullet):
                 logger.warning("Prompt injection detected in candidate bullet for cover letter; aborting LLM synthesis.")
                 return None
+
+        # Check circuit breaker before remote network call
+        if time.time() < cls._circuit_breaker_until:
+            logger.info("LLM circuit breaker active; using deterministic cover letter engine.")
+            return None
 
         client = cls.get_client()
         if not client:
@@ -218,7 +237,8 @@ RULES:
                 ],
                 temperature=0.3,
                 max_tokens=1500,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                timeout=cls.DEFAULT_TIMEOUT_SEC
             )
             content = resp.choices[0].message.content or ""
             cleaned = content.strip()
@@ -233,7 +253,8 @@ RULES:
             validated = CoverLetterStructure.model_validate(parsed)
             return validated.model_dump()
         except Exception as e:
-            logger.warning(f"LLM cover letter generation failed ({e}). Falling back to deterministic engine.")
+            cls._circuit_breaker_until = time.time() + 120.0
+            logger.warning(f"LLM cover letter generation failed ({e}). Circuit breaker activated for 120s. Falling back to deterministic engine.")
 
         return None
 

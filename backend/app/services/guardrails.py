@@ -15,6 +15,8 @@ class TailoredBulletPoint(BaseModel):
     original_bullet_id: str
     tailored_text: str
     keywords_emphasized: List[str] = Field(default_factory=list)
+    tag: Optional[str] = None
+    preservation_tag: Optional[str] = None
 
 
 class TailoredExperienceEntry(BaseModel):
@@ -311,13 +313,21 @@ class RobustGuardrailVerifier:
                     raise GuardrailViolationException(
                         "LAYER_3_NLI",
                         f"Factual contradiction detected in tailored bullet: {bullet.tailored_text}",
-                        {"contradiction_score": contradiction, "premise": master_orig}
+                        {
+                            "contradiction_score": contradiction,
+                            "premise": master_orig,
+                            "bullet_id": bullet.original_bullet_id
+                        }
                     )
                 if entailment < 0.88:
                     raise GuardrailViolationException(
                         "LAYER_3_NLI",
                         f"Tailored bullet lacks factual entailment (score: {entailment:.2f}): {bullet.tailored_text}",
-                        {"entailment_score": entailment, "premise": master_orig}
+                        {
+                            "entailment_score": entailment,
+                            "premise": master_orig,
+                            "bullet_id": bullet.original_bullet_id
+                        }
                     )
 
     def _layer_4_metric_integrity_check(self, draft: TailoredResumeDraft) -> None:
