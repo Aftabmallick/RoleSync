@@ -78,7 +78,22 @@ class ONNXNLIEngine:
     def __init__(self, model_path: Optional[str] = None):
         self.model_path = model_path or getattr(settings, "ONNX_NLI_MODEL_PATH", "models/onnx/nli_quantized.onnx")
         self.session = None
+        self.tokenizer = None
+        self._initialize_tokenizer()
         self._initialize_session()
+
+    def _initialize_tokenizer(self) -> None:
+        try:
+            p = pathlib.Path(self.model_path)
+            tok_dir = p.parent / "tokenizer"
+            if tok_dir.exists():
+                from transformers import AutoTokenizer
+                self.tokenizer = AutoTokenizer.from_pretrained(str(tok_dir), local_files_only=True)
+                logger.info(f"Loaded local tokenizer from {tok_dir}")
+            else:
+                self.tokenizer = None
+        except Exception:
+            self.tokenizer = None
 
     def _initialize_session(self) -> None:
         if not self.model_path:
@@ -102,6 +117,24 @@ class ONNXNLIEngine:
 
     def tokenize_premise_hypothesis(self, premise: str, hypothesis: str, max_length: int = 128) -> Dict[str, np.ndarray]:
         """Maps premise and hypothesis into token tensors for ONNX cross-encoders."""
+        if self.tokenizer is not None:
+            try:
+                encoded = self.tokenizer(
+                    premise,
+                    hypothesis,
+                    max_length=max_length,
+                    padding="max_length",
+                    truncation=True,
+                    return_tensors="np"
+                )
+                return {
+                    "input_ids": encoded["input_ids"].astype(np.int64),
+                    "attention_mask": encoded["attention_mask"].astype(np.int64),
+                }
+            except Exception as e:
+                logger.warning(f"Tokenizer encoding failed ({e}); falling back to standard encoding.")
+
+        # Standard deterministic subword/token mapping
         text = f"{premise} [SEP] {hypothesis}"
         words = text.split()
         tokens = [101] + [abs(hash(w)) % 28000 + 1000 for w in words][:max_length - 2] + [102]

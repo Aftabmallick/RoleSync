@@ -1,10 +1,12 @@
 import uuid
 import base64
+import json
 import logging
 import asyncio
 from typing import Dict, Any, Optional
 from celery import Celery
 from app.core.config import settings
+from app.core.redis_client import redis_service
 from app.services.taxonomy import taxonomy_service
 from app.services.guardrails import (
     RobustGuardrailVerifier,
@@ -17,11 +19,62 @@ from app.services.scoring_engine import ATSScoringEngine
 from app.services.typst_compiler import TypstCompilerService
 from app.services.llm_client import LLMClientService
 from app.services.embedding_service import EmbeddingService
+from app.services.vector_store import qdrant_service
 
 logger = logging.getLogger(__name__)
 
-# Distributed / In-memory task state store
-task_store: Dict[str, Dict[str, Any]] = {}
+
+class RedisTaskStore:
+    """
+    Distributed Task Store for resume tailoring tasks backed by Redis 7.2
+    with transparent in-memory fallback for offline test environments.
+    """
+    def __init__(self):
+        self._memory_cache: Dict[str, Dict[str, Any]] = {}
+
+    def _get_redis(self):
+        try:
+            return redis_service.get_sync_client()
+        except Exception:
+            return None
+
+    def __getitem__(self, task_id: str) -> Dict[str, Any]:
+        val = self.get(task_id)
+        if val is None:
+            raise KeyError(task_id)
+        return val
+
+    def __setitem__(self, task_id: str, value: Dict[str, Any]):
+        self.set(task_id, value)
+
+    def set(self, task_id: str, value: Dict[str, Any], ttl: int = 86400):
+        self._memory_cache[task_id] = value
+        r = self._get_redis()
+        if r is not None:
+            try:
+                r.setex(f"rolesync:task:{task_id}", ttl, json.dumps(value))
+            except Exception as e:
+                logger.warning(f"Failed to persist task {task_id} to Redis: {e}")
+
+    def get(self, task_id: str, default: Any = None) -> Optional[Dict[str, Any]]:
+        r = self._get_redis()
+        if r is not None:
+            try:
+                raw = r.get(f"rolesync:task:{task_id}")
+                if raw:
+                    parsed = json.loads(raw)
+                    self._memory_cache[task_id] = parsed
+                    return parsed
+            except Exception as e:
+                logger.warning(f"Failed to read task {task_id} from Redis: {e}")
+        return self._memory_cache.get(task_id, default)
+
+    def __contains__(self, task_id: str) -> bool:
+        return self.get(task_id) is not None
+
+
+# Distributed task state store
+task_store = RedisTaskStore()
 
 # Celery Application Configuration for containerized worker execution
 celery_app = Celery(
@@ -45,11 +98,19 @@ app = celery_app
 
 
 def _emit_task_progress(task_id: str, stage: str, status: str = "PROCESSING", extra: Optional[Dict[str, Any]] = None):
-    """Updates local task store and broadcasts real-time progress to connected WebSockets."""
+    """Updates Redis task store and broadcasts real-time progress via Pub/Sub and WebSockets."""
     payload = {"task_id": task_id, "status": status, "stage": stage}
     if extra:
         payload.update(extra)
     task_store[task_id] = payload
+
+    # Broadcast to distributed Redis Pub/Sub channel for cross-process WebSocket forwarders
+    try:
+        r = redis_service.get_sync_client()
+        if r is not None:
+            r.publish(f"rolesync:task_events:{task_id}", json.dumps(payload))
+    except Exception as e:
+        logger.warning(f"Error publishing task progress to Redis Pub/Sub: {e}")
 
     try:
         loop = asyncio.get_running_loop()
@@ -137,15 +198,25 @@ class TailorPipelineOrchestrator:
             # 3. Construct Tailored Experience Entries with Semantic Ranking & Self-Correction Loop
             jd_vec = EmbeddingService.embed_text(raw_jd)
             raw_experiences = master_profile.get("experience", [])
-            
+
+            # Semantic relevance lookup via Qdrant Vector Engine with tenant-isolation filter
+            relevant_vector_bullets = qdrant_service.search_relevant_experiences_sync(
+                user_id=str(user_id),
+                query_vector=jd_vec.tolist(),
+                limit=10
+            )
+            relevant_bullet_ids = {hit["payload"].get("bullet_id") for hit in relevant_vector_bullets if hit.get("payload")}
+
             # Rank experiences by semantic relevance to JD while keeping overall chronological coherence
             if len(raw_experiences) > 1:
                 def experience_relevance(exp: Dict[str, Any]) -> float:
+                    # Boost roles containing top vector matches
+                    boost = 0.2 if any(b.get("id") in relevant_bullet_ids for b in exp.get("bullets", [])) else 0.0
                     text = f"{exp.get('role', '')} {exp.get('company', '')} " + " ".join(
                         b.get("text", "") for b in exp.get("bullets", [])
                     )
                     exp_vec = EmbeddingService.embed_text(text)
-                    return EmbeddingService.compute_cosine_similarity(exp_vec, jd_vec)
+                    return EmbeddingService.compute_cosine_similarity(exp_vec, jd_vec) + boost
 
                 # Prioritize high-relevance roles
                 sorted_experiences = sorted(raw_experiences, key=experience_relevance, reverse=True)

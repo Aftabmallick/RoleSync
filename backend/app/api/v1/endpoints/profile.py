@@ -239,6 +239,41 @@ async def save_master_profile(
 
     await db.commit()
 
+    # Vector indexing of candidate experiences into Qdrant vector database
+    try:
+        from app.services.vector_store import qdrant_service
+        from app.services.embedding_service import EmbeddingService
+
+        point_ids = []
+        vectors = []
+        payloads = []
+        for exp in (payload.experience or []):
+            comp = exp.company or "Company"
+            role = exp.role or "Role"
+            for idx, b in enumerate(exp.bullets or []):
+                b_text = b.text if hasattr(b, "text") else str(b)
+                b_id = getattr(b, "id", None) or f"{comp}_{idx}"
+                point_ids.append(f"pt_{uuid.uuid5(uuid.NAMESPACE_DNS, f'{user_id}_{b_id}').hex}")
+                vec = EmbeddingService.embed_text(f"{role} at {comp}: {b_text}")
+                vectors.append(vec.tolist())
+                payloads.append({
+                    "bullet_id": b_id,
+                    "text": b_text,
+                    "company": comp,
+                    "role": role,
+                    "category": "experience"
+                })
+
+        if point_ids:
+            await qdrant_service.upsert_experience_vectors(
+                user_id=str(user_id),
+                vectors=vectors,
+                payloads=payloads,
+                point_ids=point_ids
+            )
+    except Exception as q_err:
+        logger.warning(f"Vector indexing skipped/failed for user {user_id}: {q_err}")
+
     # Sync to in-memory store for backwards-compatible test assertions
     encrypted_profiles_db._cleared = False
     encrypted_profiles_db[user_id] = {

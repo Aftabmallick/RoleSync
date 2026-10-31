@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     QDRANT_PORT: int = 6333
     QDRANT_API_KEY: Optional[str] = None
     QDRANT_COLLECTION_NAME: str = "candidate_embeddings"
+    VECTOR_DIMENSION: int = 384
 
     # External APIs
     GOOGLE_CLIENT_ID: Optional[str] = None

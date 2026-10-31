@@ -1,0 +1,17 @@
+.git
+.github
+node_modules
+extension/node_modules
+extension/dist
+extension/assets
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.coverage
+htmlcov
+.DS_Store
+*.db
+*.sqlite3
+backend/rolesync_dev.db

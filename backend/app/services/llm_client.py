@@ -2,11 +2,29 @@ import json
 import logging
 import os
 from typing import List, Dict, Any, Optional, Tuple
+from pydantic import BaseModel, Field
 from openai import OpenAI
 from app.core.config import settings
 from app.services.guardrails import GuardrailSanitizer
 
 logger = logging.getLogger("rolesync.llm_client")
+
+
+class RewrittenBulletItem(BaseModel):
+    id: str = Field(..., description="Original bullet identifier")
+    text: str = Field(..., description="Tailored factual bullet point text")
+
+
+class TailoredBulletsResponse(BaseModel):
+    bullets: List[RewrittenBulletItem] = Field(default_factory=list, description="List of rewritten bullets")
+
+
+class CoverLetterStructure(BaseModel):
+    subject: str = Field(default="", description="Email or letter subject")
+    salutation: str = Field(default="", description="Salutation to hiring team")
+    opening_paragraph: str = Field(..., description="Opening introduction paragraph")
+    body_paragraphs: List[str] = Field(default_factory=list, description="Core technical achievement paragraphs")
+    closing_paragraph: str = Field(..., description="Call to action and closing paragraph")
 
 
 class LLMClientService:
@@ -72,7 +90,8 @@ CRITICAL ZERO-HALLUCINATION RULES:
 1. Preserve all existing metrics, numbers, percentages, and dollar amounts EXACTLY as they appear. DO NOT invent or inflate any numbers.
 2. Emphasize relevant technical keywords: {', '.join(safe_keywords[:6])}.
 3. Every rewritten bullet must remain factually entailed by the original.
-4. Output strict JSON array of objects: [{{"id": "original_id", "text": "tailored text..."}}].
+4. Output STRICT JSON object with key "bullets":
+{{"bullets": [{{"id": "original_id", "text": "tailored text..."}}]}}
 
 Original Bullets:
 {json.dumps(sanitized_bullets, indent=2)}
@@ -81,14 +100,15 @@ Original Bullets:
                 resp = client.chat.completions.create(
                     model=model_name,
                     messages=[
-                        {"role": "system", "content": "You are a precise resume enhancer that strictly adheres to factual entailment."},
+                        {"role": "system", "content": "You are a precise resume enhancer that strictly adheres to factual entailment and outputs valid JSON objects."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.2,
-                    max_tokens=1024
+                    max_tokens=1024,
+                    response_format={"type": "json_object"}
                 )
                 content = resp.choices[0].message.content or ""
-                # Parse JSON
+                # Parse with Pydantic schema validation
                 cleaned = content.strip()
                 if cleaned.startswith("```"):
                     lines = cleaned.split("\n")
@@ -97,9 +117,14 @@ Original Bullets:
                     if lines and lines[-1].strip() == "```":
                         lines = lines[:-1]
                     cleaned = "\n".join(lines).strip()
-                parsed = json.loads(cleaned)
-                if isinstance(parsed, list) and len(parsed) == len(original_bullets):
-                    return parsed
+
+                parsed_json = json.loads(cleaned)
+                if isinstance(parsed_json, list):
+                    parsed_json = {"bullets": parsed_json}
+
+                validated = TailoredBulletsResponse.model_validate(parsed_json)
+                if len(validated.bullets) == len(original_bullets):
+                    return [b.model_dump() for b in validated.bullets]
             except Exception as e:
                 logger.warning(f"LLM bullet rewrite failed ({e}). Using deterministic enhancement.")
 
@@ -192,7 +217,8 @@ RULES:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=1500
+                max_tokens=1500,
+                response_format={"type": "json_object"}
             )
             content = resp.choices[0].message.content or ""
             cleaned = content.strip()
@@ -204,13 +230,8 @@ RULES:
                     lines = lines[:-1]
                 cleaned = "\n".join(lines).strip()
             parsed = json.loads(cleaned)
-            if (
-                isinstance(parsed, dict)
-                and "opening_paragraph" in parsed
-                and "body_paragraphs" in parsed
-                and isinstance(parsed["body_paragraphs"], list)
-            ):
-                return parsed
+            validated = CoverLetterStructure.model_validate(parsed)
+            return validated.model_dump()
         except Exception as e:
             logger.warning(f"LLM cover letter generation failed ({e}). Falling back to deterministic engine.")
 

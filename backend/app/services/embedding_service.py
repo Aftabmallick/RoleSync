@@ -1,7 +1,9 @@
 import hashlib
 import logging
+import os
 from typing import List, Dict, Optional, Tuple
 import numpy as np
+from app.core.config import settings
 
 logger = logging.getLogger("rolesync.embedding")
 
@@ -11,10 +13,28 @@ _embedding_cache: Dict[str, np.ndarray] = {}
 
 class EmbeddingService:
     """
-    High-Performance Local CPU Vector Embedding Engine.
-    Uses FastEmbed (quantized ONNX all-MiniLM-L6-v2) for sub-5ms 384-dimensional dense vectors
-    with zero external API dependency or latency bottlenecks.
+    Dual-Provider Vector Embedding Engine.
+    Primary: OpenAI text-embedding-3-large (3072 dimensions) when OPENAI_API_KEY is configured.
+    Fallback: Local CPU FastEmbed (all-MiniLM-L6-v2, 384 dimensions) for zero-latency offline execution.
+    Emergency: Deterministic MD5 n-gram hashing projection.
     """
+
+    @classmethod
+    def get_dimension(cls) -> int:
+        if getattr(settings, "OPENAI_API_KEY", None) or os.getenv("OPENAI_API_KEY"):
+            return 3072
+        return getattr(settings, "VECTOR_DIMENSION", 384)
+
+    @classmethod
+    def _get_openai_client(cls):
+        api_key = getattr(settings, "OPENAI_API_KEY", None) or os.getenv("OPENAI_API_KEY")
+        if api_key:
+            try:
+                from openai import OpenAI
+                return OpenAI(api_key=api_key)
+            except Exception as e:
+                logger.warning(f"Could not initialize OpenAI client for embeddings: {e}")
+        return None
 
     @classmethod
     def _get_model(cls):
@@ -33,24 +53,43 @@ class EmbeddingService:
     @classmethod
     def embed_text(cls, text: str) -> np.ndarray:
         """
-        Embeds a single string into a normalized 384-dim dense numpy vector.
+        Embeds a single string into a normalized dense numpy vector.
         Thread-safe with LRU memory caching.
         """
+        dim = cls.get_dimension()
         clean = " ".join(text.strip().split())
         if not clean:
-            return np.zeros(384, dtype=np.float32)
+            return np.zeros(dim, dtype=np.float32)
 
-        cache_key = hashlib.sha256(clean.encode("utf-8")).hexdigest()
+        cache_key = hashlib.sha256(f"{dim}:{clean}".encode("utf-8")).hexdigest()
         if cache_key in _embedding_cache:
             return _embedding_cache[cache_key]
 
+        # 1. Try OpenAI text-embedding-3-large if key configured
+        openai_client = cls._get_openai_client()
+        if openai_client:
+            try:
+                res = openai_client.embeddings.create(
+                    input=clean,
+                    model="text-embedding-3-large",
+                    dimensions=3072
+                )
+                vec = np.array(res.data[0].embedding, dtype=np.float32)
+                norm = np.linalg.norm(vec)
+                if norm > 0:
+                    vec = vec / norm
+                _embedding_cache[cache_key] = vec
+                return vec
+            except Exception as e:
+                logger.warning(f"OpenAI embedding error, falling back to local FastEmbed: {e}")
+
+        # 2. Local FastEmbed fallback (384 dimensions)
         model = cls._get_model()
         if model is not None:
             try:
                 embeddings = list(model.embed([clean]))
                 if embeddings:
                     vec = np.array(embeddings[0], dtype=np.float32)
-                    # Normalize
                     norm = np.linalg.norm(vec)
                     if norm > 0:
                         vec = vec / norm
@@ -59,8 +98,8 @@ class EmbeddingService:
             except Exception as e:
                 logger.warning(f"FastEmbed embedding error: {e}")
 
-        # Deterministic pseudo-embedding fallback using character n-gram hashing
-        vec = cls._hash_fallback_vector(clean, 384)
+        # 3. Deterministic pseudo-embedding fallback using character n-gram hashing
+        vec = cls._hash_fallback_vector(clean, dim)
         _embedding_cache[cache_key] = vec
         return vec
 
@@ -74,6 +113,11 @@ class EmbeddingService:
         """Computes normalized cosine similarity in range [0.0, 1.0]."""
         if vec1 is None or vec2 is None:
             return 0.5
+        # If dimensions differ due to model switch, slice to matching min dim
+        if len(vec1) != len(vec2):
+            min_len = min(len(vec1), len(vec2))
+            vec1 = vec1[:min_len]
+            vec2 = vec2[:min_len]
         norm1 = np.linalg.norm(vec1)
         norm2 = np.linalg.norm(vec2)
         if norm1 == 0 or norm2 == 0:
@@ -93,4 +137,5 @@ class EmbeddingService:
             vec[idx] += sign
         norm = np.linalg.norm(vec)
         return (vec / norm) if norm > 0 else vec
+
 
