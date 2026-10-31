@@ -11,8 +11,14 @@ WORKDIR /app
 # Build Stage: Download and unpack verified Typst standalone binary
 FROM base AS typst-builder
 RUN apt-get update && apt-get install -y --no-install-recommends curl tar ca-certificates xz-utils && \
-    curl -fsSL https://github.com/typst/typst/releases/download/v0.11.1/typst-x86_64-unknown-linux-musl.tar.xz | \
-    tar -xJ --strip-components=1 -C /usr/local/bin typst-x86_64-unknown-linux-musl/typst && \
+    ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "arm64" ]; then \
+        TYPST_ARCH="aarch64-unknown-linux-musl"; \
+    else \
+        TYPST_ARCH="x86_64-unknown-linux-musl"; \
+    fi && \
+    curl -fsSL "https://github.com/typst/typst/releases/download/v0.11.1/typst-${TYPST_ARCH}.tar.xz" | \
+    tar -xJ --strip-components=1 -C /usr/local/bin "typst-${TYPST_ARCH}/typst" && \
     chmod +x /usr/local/bin/typst
 
 # Application Runtime Stage

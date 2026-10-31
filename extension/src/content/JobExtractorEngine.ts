@@ -10,6 +10,11 @@ export interface ExtractedJobDescription {
   cleanedHtmlContent: string;
   sourceUrl: string;
   selectorVersion: string;
+  jobPoster?: {
+    fullName: string;
+    title: string;
+    profileUrl: string;
+  };
 }
 
 export class JobExtractorEngine {
@@ -258,7 +263,8 @@ export class JobExtractorEngine {
         rawTextContent: bodyText,
         cleanedHtmlContent: bodyNode.innerHTML,
         sourceUrl: window.location.href,
-        selectorVersion: '2026.10-v3'
+        selectorVersion: '2026.10-v3',
+        jobPoster: this.detectHiringTeam(),
       };
     } catch (err) {
       console.warn(`[RoleSync] parseTiered error for ${provider}, falling back to readability:`, err);
@@ -321,8 +327,54 @@ export class JobExtractorEngine {
       rawTextContent: this.cleanText(rawText),
       cleanedHtmlContent: cleanedHtml,
       sourceUrl: window.location.href,
-      selectorVersion: 'generic-readability-v3'
+      selectorVersion: 'generic-readability-v3',
+      jobPoster: this.detectHiringTeam(),
     };
+  }
+
+  public detectHiringTeam(): { fullName: string; title: string; profileUrl: string } | undefined {
+    try {
+      // 1. Target LinkedIn "Meet the hiring team" / Job Poster module
+      const hirerContainer = document.querySelector(
+        '.hirer-card__container, .jobs-poster, [data-view-name*="hiring-team"], .job-details-issuances, [class*="hirer"]'
+      );
+
+      if (hirerContainer) {
+        const nameEl = hirerContainer.querySelector(
+          '.hirer-card__name, [class*="poster-name"], .jobs-poster__name, strong, h3'
+        );
+        const titleEl = hirerContainer.querySelector(
+          '.hirer-card__occupation, [class*="poster-headline"], .jobs-poster__headline, [class*="subtitle"], p'
+        );
+        const linkEl = hirerContainer.querySelector<HTMLAnchorElement>('a[href*="/in/"]');
+
+        const fullName = nameEl?.textContent?.trim() || '';
+        const title = titleEl?.textContent?.trim() || 'Technical Recruiter';
+        const profileUrl = linkEl?.href ? linkEl.href.split('?')[0] : '';
+
+        if (fullName && fullName.length < 50) {
+          return { fullName, title, profileUrl };
+        }
+      }
+
+      // 2. Fallback: Search for any a[href*="/in/"] that has a neighboring or parent hiring context
+      const possibleHirerLink = document.querySelector<HTMLAnchorElement>(
+        '.job-details-about-the-company-module__influencer-content a[href*="/in/"], [data-view-name*="hiring"] a[href*="/in/"]'
+      );
+      if (possibleHirerLink) {
+        const fullName = possibleHirerLink.textContent?.trim() || '';
+        if (fullName && fullName.length < 50) {
+          return {
+            fullName,
+            title: 'Hiring Team Member',
+            profileUrl: possibleHirerLink.href.split('?')[0],
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('[RoleSync] Error detecting hiring team from DOM:', e);
+    }
+    return undefined;
   }
 
   private detectCompanyFromMeta(): string {

@@ -2,7 +2,10 @@ import logging
 import re
 import uuid
 from typing import Dict, Any
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.database import get_db
+from app.models.telemetry import SelectorDriftEvent
 from app.schemas.telemetry import SelectorFailureReport, SelectorFailureResponse
 
 router = APIRouter(prefix="/telemetry", tags=["Observability & Telemetry"])
@@ -44,10 +47,14 @@ def sanitize_structural_metadata(data: Dict[str, Any]) -> Dict[str, Any]:
     response_model=SelectorFailureResponse,
     status_code=status.HTTP_200_OK,
 )
-async def report_selector_failure(report: SelectorFailureReport):
+async def report_selector_failure(
+    report: SelectorFailureReport,
+    db: AsyncSession = Depends(get_db)
+):
     """
     Receives selector failure telemetry when client ATS extraction fails.
-    Sanitizes structural metadata, logs drift warning, and queues for selector self-healing.
+    Sanitizes structural metadata, logs drift warning, and persists event to database
+    for automated selector self-healing.
     """
     clean_summary = sanitize_structural_metadata(report.page_structure_summary)
     report_id = f"drift_{uuid.uuid4().hex[:12]}"
@@ -62,6 +69,22 @@ async def report_selector_failure(report: SelectorFailureReport):
         "timestamp": report.timestamp,
     }
     drift_event_log.append(event)
+
+    # Persist drift event to relational DB
+    try:
+        drift_record = SelectorDriftEvent(
+            report_id=report_id,
+            host=report.host,
+            ats_provider=report.ats_provider,
+            failed_selectors=report.failed_selectors,
+            summary=clean_summary,
+            client_version=report.client_version,
+            timestamp=report.timestamp or "",
+        )
+        db.add(drift_record)
+        await db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to persist telemetry drift event to DB ({e}); kept in-memory.")
 
     logger.warning(
         f"[DRIFT_ALERT] Selector failure on host='{report.host}' provider='{report.ats_provider}'. "

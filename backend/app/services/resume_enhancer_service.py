@@ -7,6 +7,12 @@ import base64
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 
+from sqlalchemy import select, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.resume_version import ResumeVersion
+from app.models.user import User
+
 from app.services.taxonomy import taxonomy_service, get_skill_category
 from app.services.scoring_engine import ATSScoringEngine
 from app.services.typst_compiler import TypstCompilerService
@@ -224,7 +230,7 @@ class ResumeEnhancerService:
         )
 
     @classmethod
-    def apply_enhancements_and_save(
+    async def apply_enhancements_and_save(
         cls,
         base_resume: Dict[str, Any],
         target_role: str,
@@ -233,11 +239,12 @@ class ResumeEnhancerService:
         accepted_skills: Optional[List[str]] = None,
         accepted_summary: Optional[str] = None,
         accepted_bullet_updates: Optional[List[Dict[str, str]]] = None,
-        user_id: str = "usr_default"
+        user_id: str = "usr_default",
+        db: Optional[AsyncSession] = None
     ) -> ResumeVersionItem:
         """
         Updates the selected resume with accepted additions, compiles the PDF in the exact
-        structure and section order of the base resume, and persists as a new named version.
+        structure and section order of the base resume, and persists as a new named version in PostgreSQL.
         """
         enhanced = copy.deepcopy(base_resume)
 
@@ -341,9 +348,47 @@ class ResumeEnhancerService:
         final_score = min(96.0, score_res["composite_score"] + 15.0)
 
         # 7. Create version record
+        now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
         now_iso = datetime.now(timezone.utc).isoformat()
-        ver_id = f"ver_{uuid.uuid4().hex[:10]}"
+        ver_uuid = uuid.uuid4()
+        ver_id = f"ver_{ver_uuid.hex[:10]}"
         v_name = version_name or f"Enhanced for {company_name} ({target_role})"
+
+        if db:
+            try:
+                def _to_uuid(val: Any) -> uuid.UUID:
+                    if isinstance(val, uuid.UUID):
+                        return val
+                    try:
+                        return uuid.UUID(str(val))
+                    except (ValueError, TypeError):
+                        return uuid.uuid5(uuid.NAMESPACE_DNS, str(val))
+
+                u_id = _to_uuid(user_id)
+                # Ensure user exists for foreign key
+                user_stmt = select(User).where(User.id == u_id)
+                u_res = await db.execute(user_stmt)
+                if not u_res.scalars().first():
+                    db.add(User(id=u_id, email=f"{u_id}@rolesync.dev", full_name="Candidate Dev", plan_tier="FREE", is_active=True))
+                    await db.flush()
+
+                db_version = ResumeVersion(
+                    id=ver_uuid,
+                    user_id=u_id,
+                    version_name=v_name,
+                    target_company=company_name,
+                    target_role=target_role,
+                    ats_score=round(final_score, 1),
+                    profile_data=enhanced,
+                    pdf_base64=pdf_b64,
+                    created_at=now_dt
+                )
+                db.add(db_version)
+                await db.commit()
+            except Exception as dbe:
+                await db.rollback()
+                logger.error(f"Could not persist ResumeVersion to DB: {dbe}")
+                raise
 
         version_record = {
             "id": ver_id,
@@ -360,22 +405,72 @@ class ResumeEnhancerService:
         if user_id not in versions_store:
             versions_store[user_id] = []
         versions_store[user_id].insert(0, version_record)
-        _save_versions()
 
         logger.info(f"Created resume version '{v_name}' (ID: {ver_id}) for user '{user_id}'.")
         return ResumeVersionItem(**version_record)
 
     @classmethod
-    def list_versions(cls, user_id: str) -> List[ResumeVersionItem]:
+    async def list_versions(cls, user_id: str, db: Optional[AsyncSession] = None) -> List[ResumeVersionItem]:
+        if db:
+            try:
+                def _to_uuid(val: Any) -> uuid.UUID:
+                    if isinstance(val, uuid.UUID):
+                        return val
+                    try:
+                        return uuid.UUID(str(val))
+                    except (ValueError, TypeError):
+                        return uuid.uuid5(uuid.NAMESPACE_DNS, str(val))
+
+                u_id = _to_uuid(user_id)
+                stmt = select(ResumeVersion).where(ResumeVersion.user_id == u_id).order_by(ResumeVersion.created_at.desc())
+                res = await db.execute(stmt)
+                db_vers = res.scalars().all()
+                if db_vers:
+                    return [
+                        ResumeVersionItem(
+                            id=f"ver_{v.id.hex[:10]}" if isinstance(v.id, uuid.UUID) else str(v.id),
+                            user_id=str(v.user_id),
+                            name=v.version_name,
+                            target_company=v.target_company,
+                            target_role=v.target_role,
+                            created_at=v.created_at.isoformat(),
+                            ats_score=v.ats_score,
+                            profile_data=v.profile_data,
+                            pdf_base64=v.pdf_base64
+                        )
+                        for v in db_vers
+                    ]
+            except Exception as dbe:
+                logger.warning(f"Could not load ResumeVersions from DB: {dbe}")
+
         user_vers = versions_store.get(user_id, [])
         return [ResumeVersionItem(**v) for v in user_vers]
 
     @classmethod
-    def delete_version(cls, user_id: str, version_id: str) -> bool:
+    async def delete_version(cls, user_id: str, version_id: str, db: Optional[AsyncSession] = None) -> bool:
+        deleted_from_db = False
+        if db:
+            try:
+                def _to_uuid(val: Any) -> uuid.UUID:
+                    if isinstance(val, uuid.UUID):
+                        return val
+                    try:
+                        return uuid.UUID(str(val))
+                    except (ValueError, TypeError):
+                        return uuid.uuid5(uuid.NAMESPACE_DNS, str(val))
+
+                u_id = _to_uuid(user_id)
+                stmt = delete(ResumeVersion).where(ResumeVersion.user_id == u_id)
+                res = await db.execute(stmt)
+                await db.commit()
+                if res.rowcount > 0:
+                    deleted_from_db = True
+            except Exception as dbe:
+                logger.warning(f"Could not delete ResumeVersion from DB: {dbe}")
+
         user_vers = versions_store.get(user_id, [])
         initial_len = len(user_vers)
         versions_store[user_id] = [v for v in user_vers if v["id"] != version_id]
-        if len(versions_store[user_id]) != initial_len:
-            _save_versions()
+        if len(versions_store[user_id]) != initial_len or deleted_from_db:
             return True
         return False

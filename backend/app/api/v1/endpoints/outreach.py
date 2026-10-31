@@ -6,6 +6,9 @@ from app.schemas.outreach import (
     DeliverabilityResult,
     OutreachSynthesizeRequest,
     OutreachSynthesizeResponse,
+    PredictEmailRequest,
+    PredictEmailResponse,
+    PredictedEmailOption,
 )
 from app.services.outreach_service import OutreachService, OutreachComplianceError
 from app.core.jwt import get_current_user_id
@@ -31,6 +34,27 @@ async def discover_recruiters(
         company_name=payload.company_name,
         domain=domain,
         recruiters=recruiters,
+    )
+
+
+@router.post("/predict-email", response_model=PredictEmailResponse)
+async def predict_recruiter_email(
+    payload: PredictEmailRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Predicts corporate email permutations for a named individual at a company with DNS MX deliverability verification.
+    """
+    domain, candidates = OutreachService.predict_recruiter_emails(
+        full_name=payload.full_name,
+        company_name=payload.company_name,
+        domain=payload.domain,
+    )
+    return PredictEmailResponse(
+        full_name=payload.full_name,
+        company_name=payload.company_name,
+        domain=domain,
+        candidates=[PredictedEmailOption(**c) for c in candidates],
     )
 
 

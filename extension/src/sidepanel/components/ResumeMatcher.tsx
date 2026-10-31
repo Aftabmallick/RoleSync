@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScoreBreakdown } from './ScoreCard';
+import { fetchWithAuth } from '../../utils/apiClient';
 
 export interface ResumeVersion {
   id: string;
@@ -82,7 +83,7 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
   // Load versions from backend and local storage
   const loadVersions = async () => {
     try {
-      const res = await fetch(`${apiBaseUrl}/resume/versions`);
+      const res = await fetchWithAuth(`${apiBaseUrl}/resume/versions`);
       if (res.ok) {
         const data = await res.json();
         setVersions(data.versions || []);
@@ -155,7 +156,7 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
     reader.onload = async () => {
       try {
         const base64Data = (reader.result as string).split(',')[1];
-        const res = await fetch(`${apiBaseUrl}/profile/parse-resume`, {
+        const res = await fetchWithAuth(`${apiBaseUrl}/profile/parse-resume`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pdf_base64: base64Data }),
@@ -191,7 +192,7 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
     const activeProf = getActiveProfile();
 
     try {
-      const res = await fetch(`${apiBaseUrl}/resume/match-and-suggest`, {
+      const res = await fetchWithAuth(`${apiBaseUrl}/resume/match-and-suggest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -240,7 +241,7 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
       .map((b) => ({ original_id: b.original_id, suggested_text: b.suggested_text }));
 
     try {
-      const res = await fetch(`${apiBaseUrl}/resume/apply-enhancements`, {
+      const res = await fetchWithAuth(`${apiBaseUrl}/resume/apply-enhancements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

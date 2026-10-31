@@ -39,6 +39,7 @@ async function runExtraction(): Promise<void> {
         rawText: extracted.rawTextContent,
         cleanedHtml: extracted.cleanedHtmlContent,
         pageUrl: extracted.sourceUrl,
+        jobPoster: extracted.jobPoster,
       },
     } as AppExtensionMessage);
   } catch (err) {

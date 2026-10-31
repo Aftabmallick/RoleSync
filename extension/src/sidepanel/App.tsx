@@ -12,10 +12,14 @@ import { ApplicationsTracker } from './components/ApplicationsTracker';
 import { ResumeMatcher, ResumeVersion } from './components/ResumeMatcher';
 import { ToastContainer, ToastMessage, ToastType } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { useSessionStore } from '../store/useSessionStore';
+import { AuthModal } from './components/AuthModal';
 
 const BACKEND_API_URL = 'http://localhost:8000/api/v1';
 
 export default function App() {
+  const { isAuthenticated, user, logout, initAuth } = useSessionStore();
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'copilot' | 'applications' | 'profile'>('copilot');
   const [executionMode, setExecutionMode] = useState<'copilot' | 'autopilot'>('copilot');
   const [masterProfile, setMasterProfile] = useState<MasterProfileData | null>(null);
@@ -145,6 +149,9 @@ export default function App() {
   };
 
   useEffect(() => {
+    // -1. Restore authenticated session state
+    initAuth();
+
     // 0. Initial Backend Health Check & recurring poll
     checkBackendHealth();
     const healthInterval = setInterval(checkBackendHealth, 12000);
@@ -436,6 +443,11 @@ export default function App() {
         cleanedHtml:
           '<p>Senior Infrastructure Engineer at Stripe. Requirements: Python, Docker, Kubernetes, PostgreSQL, AWS.</p>',
         pageUrl: 'https://boards.greenhouse.io/stripe/jobs/sample',
+        jobPoster: {
+          fullName: 'Sarah Chen',
+          title: 'Lead Technical Recruiter (Infrastructure)',
+          profileUrl: 'https://www.linkedin.com/in/sarah-chen',
+        },
       });
     } else {
       setCurrentJd({
@@ -447,6 +459,11 @@ export default function App() {
         cleanedHtml:
           '<p>Staff Backend Systems Engineer at Snowflake. Requirements: FastAPI, Python, Redis, Kubernetes.</p>',
         pageUrl: 'https://snowflake.wd1.myworkdayjobs.com/sample',
+        jobPoster: {
+          fullName: 'David Miller',
+          title: 'Senior Technical Talent Partner',
+          profileUrl: 'https://www.linkedin.com/in/david-miller',
+        },
       });
     }
     setTailorResult(null);
@@ -523,6 +540,33 @@ export default function App() {
               {keepaliveConnected ? 'Active' : 'Standby'}
             </span>
           </div>
+
+          {/* User Auth Profile Pill */}
+          {isAuthenticated && user ? (
+            <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 px-2 py-1 rounded-full text-[11px]">
+              <span className="font-bold text-indigo-900 truncate max-w-[100px]" title={user.email}>
+                {user.fullName || user.email.split('@')[0]}
+              </span>
+              <span className="text-[10px] bg-indigo-200 text-indigo-800 px-1 rounded font-semibold">{user.planTier}</span>
+              <button
+                onClick={() => {
+                  logout();
+                  showToast('info', 'Logged out of RoleSync session');
+                }}
+                className="text-indigo-400 hover:text-indigo-700 ml-0.5 font-bold text-xs cursor-pointer"
+                title="Sign out"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAuthModal(true)}
+              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] rounded-lg shadow-xs transition-colors cursor-pointer"
+            >
+              Sign In
+            </button>
+          )}
         </div>
       </header>
 
@@ -819,6 +863,8 @@ export default function App() {
                   jobTitle={currentJd.jobTitle}
                   candidateProfile={masterProfile}
                   apiBaseUrl={BACKEND_API_URL}
+                  detectedPoster={currentJd.jobPoster}
+                  onToast={showToast}
                 />
 
                 {/* Autofill / Autopilot Action Block */}
@@ -1008,6 +1054,13 @@ export default function App() {
       <footer className="p-3 border-t border-slate-200 bg-white text-center text-[11px] text-slate-400">
         RoleSync v2.0 • 4-Layer Guardrail & Single-Page Typst
       </footer>
+
+      {/* Auth & Tenant Vault Modal */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onSuccess={(msg) => showToast('success', msg)}
+      />
 
       {/* Floating Modern In-App Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />

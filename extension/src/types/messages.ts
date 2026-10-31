@@ -19,6 +19,12 @@ export interface BaseExtensionMessage<TAction extends MessageAction, TPayload> {
   payload: TPayload;
 }
 
+export interface JobPoster {
+  fullName: string;
+  title: string;
+  profileUrl: string;
+}
+
 export type JDExtractedPayload = {
   atsProvider: 'GREENHOUSE' | 'LEVER' | 'WORKDAY' | 'LINKEDIN' | 'ICIMS' | 'TALEO' | 'GENERIC';
   jobTitle: string;
@@ -26,6 +32,7 @@ export type JDExtractedPayload = {
   rawText: string;
   cleanedHtml: string;
   pageUrl: string;
+  jobPoster?: JobPoster;
 };
 
 export type AutofillProgressPayload = {

@@ -16,6 +16,7 @@ from app.services.guardrails import (
 from app.services.scoring_engine import ATSScoringEngine
 from app.services.typst_compiler import TypstCompilerService
 from app.services.llm_client import LLMClientService
+from app.services.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
@@ -133,14 +134,31 @@ class TailorPipelineOrchestrator:
             ]
             tailored_skill_list = matching_skills + other_skills
 
-            # 3. Construct Tailored Experience Entries with Self-Correction Loop
+            # 3. Construct Tailored Experience Entries with Semantic Ranking & Self-Correction Loop
+            jd_vec = EmbeddingService.embed_text(raw_jd)
+            raw_experiences = master_profile.get("experience", [])
+            
+            # Rank experiences by semantic relevance to JD while keeping overall chronological coherence
+            if len(raw_experiences) > 1:
+                def experience_relevance(exp: Dict[str, Any]) -> float:
+                    text = f"{exp.get('role', '')} {exp.get('company', '')} " + " ".join(
+                        b.get("text", "") for b in exp.get("bullets", [])
+                    )
+                    exp_vec = EmbeddingService.embed_text(text)
+                    return EmbeddingService.compute_cosine_similarity(exp_vec, jd_vec)
+
+                # Prioritize high-relevance roles
+                sorted_experiences = sorted(raw_experiences, key=experience_relevance, reverse=True)
+            else:
+                sorted_experiences = raw_experiences
+
             max_retries = 3
             verified_draft = None
 
             for attempt in range(1, max_retries + 1):
                 try:
                     tailored_experience = []
-                    for exp in master_profile.get("experience", []):
+                    for exp in sorted_experiences:
                         raw_bullets = [
                             {"id": b.get("id", f"b_{idx}"), "text": b.get("text", "")}
                             for idx, b in enumerate(exp.get("bullets", []))
@@ -200,7 +218,7 @@ class TailorPipelineOrchestrator:
 
             _emit_task_progress(task_id, stage="SCORING_ATS")
 
-            # 5. Calculate 4-Dimension Composite ATS Score
+            # 5. Calculate 4-Dimension Composite ATS Score with dense embeddings
             resume_text_corpus = (
                 f"{verified_draft.summary} " +
                 " ".join(verified_draft.skills) + " " +
@@ -210,10 +228,11 @@ class TailorPipelineOrchestrator:
                     for b in exp.bullet_points
                 ])
             )
+            resume_vec = EmbeddingService.embed_text(resume_text_corpus)
 
             ats_score = ATSScoringEngine.calculate_score(
-                resume_embedding=None,  # Fallback to lexical/Jaccard in offline runner
-                jd_embedding=None,
+                resume_embedding=resume_vec,
+                jd_embedding=jd_vec,
                 resume_skills=set(verified_draft.skills),
                 jd_required_skills=jd_skills,
                 resume_text=resume_text_corpus,

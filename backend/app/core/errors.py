@@ -68,6 +68,28 @@ def register_problem_handlers(app: FastAPI) -> None:
             media_type="application/problem+json",
         )
 
+    try:
+        from slowapi.errors import RateLimitExceeded
+
+        @app.exception_handler(RateLimitExceeded)
+        async def handle_rate_limit_exceeded(request: Request, exc: RateLimitExceeded):
+            instance_id = f"urn:rolesync:error:{uuid.uuid4().hex}"
+            problem = ProblemDetail(
+                type="https://rolesync.ai/errors/rate-limit-exceeded",
+                title="Rate Limit Exceeded",
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Too many requests. Limit: {exc.detail}",
+                instance=f"{request.url.path}#{instance_id}",
+            )
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content=problem.model_dump(exclude_none=True),
+                media_type="application/problem+json",
+                headers={"Retry-After": "60"},
+            )
+    except ImportError:
+        pass
+
     @app.exception_handler(HTTPException)
     async def handle_http_exception(request: Request, exc: HTTPException):
         instance_id = f"urn:rolesync:error:{uuid.uuid4().hex}"

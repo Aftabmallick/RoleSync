@@ -863,7 +863,7 @@ Resume Text:
                 from openai import OpenAI
                 base_url = getattr(settings, "NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
                 model_name = getattr(settings, "NVIDIA_MODEL", "deepseek-ai/deepseek-v4.1-flash")
-                client = OpenAI(base_url=base_url, api_key=nvidia_key)
+                client = OpenAI(base_url=base_url, api_key=nvidia_key, timeout=4.0)
                 resp = client.chat.completions.create(
                     model=model_name,
                     messages=[
@@ -871,7 +871,8 @@ Resume Text:
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.0,
-                    max_tokens=4096
+                    max_tokens=4096,
+                    timeout=4.0
                 )
                 raw_content = resp.choices[0].message.content or ""
             else:
@@ -881,7 +882,8 @@ Resume Text:
                     model=model_name,
                     messages=[{"role": "user", "content": prompt}],
                     response_format={"type": "json_object"},
-                    temperature=0.0
+                    temperature=0.0,
+                    timeout=4.0
                 )
                 raw_content = response.choices[0].message.content or ""
 

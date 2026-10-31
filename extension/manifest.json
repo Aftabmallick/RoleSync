@@ -12,9 +12,22 @@
     "identity"
   ],
   "host_permissions": [
-    "<all_urls>",
-    "http://localhost:8000/*",
-    "http://127.0.0.1:8000/*",
+    "*://*.greenhouse.io/*",
+    "*://boards.greenhouse.io/*",
+    "*://*.lever.co/*",
+    "*://jobs.lever.co/*",
+    "*://*.myworkdayjobs.com/*",
+    "*://*.ashbyhq.com/*",
+    "*://jobs.ashbyhq.com/*",
+    "*://*.smartrecruiters.com/*",
+    "*://*.icims.com/*",
+    "*://*.taleo.net/*",
+    "*://*.workable.com/*",
+    "*://*.bamboohr.com/*",
+    "*://*.linkedin.com/*",
+    "*://*.indeed.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
     "https://api.rolesync.io/*"
   ],
   "background": {
@@ -24,7 +37,22 @@
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>"
+        "*://*.greenhouse.io/*",
+        "*://boards.greenhouse.io/*",
+        "*://*.lever.co/*",
+        "*://jobs.lever.co/*",
+        "*://*.myworkdayjobs.com/*",
+        "*://*.ashbyhq.com/*",
+        "*://jobs.ashbyhq.com/*",
+        "*://*.smartrecruiters.com/*",
+        "*://*.icims.com/*",
+        "*://*.taleo.net/*",
+        "*://*.workable.com/*",
+        "*://*.bamboohr.com/*",
+        "*://*.linkedin.com/jobs/*",
+        "*://*.indeed.com/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
       ],
       "js": ["dist/content/injector.js"],
       "run_at": "document_idle"
@@ -46,7 +74,9 @@
         "dist/assets/*",
         "dist/content/isolated.css"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

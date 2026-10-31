@@ -177,6 +177,39 @@ class TestOutreachEngine(unittest.TestCase):
         self.assertEqual(synth_data["mode"], "copilot")
         self.assertTrue(synth_data["draft"]["is_compliant"])
         self.assertLess(synth_data["draft"]["word_count"], 120)
+        self.assertIn("linkedin_connection_note", synth_data["draft"])
+        self.assertLessEqual(len(synth_data["draft"]["linkedin_connection_note"]), 300)
+
+    def test_predict_email_permutations(self):
+        resp = self.client.post(
+            "/api/v1/outreach/predict-email",
+            json={
+                "full_name": "Sarah Chen",
+                "company_name": "Stripe",
+                "domain": "stripe.com"
+            }
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["domain"], "stripe.com")
+        self.assertGreaterEqual(len(data["candidates"]), 3)
+        candidate_emails = [c["email"] for c in data["candidates"]]
+        self.assertIn("sarah.chen@stripe.com", candidate_emails)
+        self.assertIn("sarah@stripe.com", candidate_emails)
+
+    def test_hmac_opt_out_token_verification(self):
+        email = "recruiter@acme.org"
+        token = OutreachService.generate_opt_out_token(email)
+        self.assertTrue(OutreachService.verify_opt_out_token(token, email))
+        self.assertFalse(OutreachService.verify_opt_out_token(token, "other@acme.org"))
+        self.assertFalse(OutreachService.verify_opt_out_token("invalid_token", email))
+
+    def test_catch_all_email_handling(self):
+        # Catch-all domains should return risky rather than claiming false positive 100% deliverability
+        res = OutreachService.verify_email_deliverability("test@catchall-company.com")
+        self.assertTrue(res.is_catch_all)
+        self.assertEqual(res.status, "risky")
+        self.assertFalse(res.is_deliverable)
 
 
 if __name__ == "__main__":

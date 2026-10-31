@@ -35,8 +35,8 @@ export const PdfPreview: React.FC<PdfPreviewProps> = ({ pdfBase64, onDownload })
         if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
           try {
             const workerUrl = typeof chrome !== 'undefined' && chrome.runtime?.getURL
-              ? chrome.runtime.getURL('assets/pdf.worker.min.mjs')
-              : '/assets/pdf.worker.min.mjs';
+              ? chrome.runtime.getURL('dist/assets/pdf.worker.min.mjs')
+              : '/dist/assets/pdf.worker.min.mjs';
             pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
           } catch (e) {
             console.warn('[RoleSync UI] Failed to set workerSrc:', e);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { fetchWithAuth } from '../../utils/apiClient';
 
 export interface ApplicationRecord {
   id: string;
@@ -47,7 +48,7 @@ export const ApplicationsTracker: React.FC<ApplicationsTrackerProps> = ({
   const loadApplications = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${apiBaseUrl}/applications`);
+      const res = await fetchWithAuth(`${apiBaseUrl}/applications`);
       if (res.ok) {
         const data = await res.json();
         setApplications(data.applications || []);

@@ -4,7 +4,7 @@ import re
 import secrets
 import time
 import urllib.parse
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 from app.schemas.outreach import (
     DeliverabilityResult,
@@ -13,6 +13,7 @@ from app.schemas.outreach import (
     RecruiterContact,
 )
 from app.services.email_verifier import EmailDeliverabilityService
+from app.core.config import settings
 
 
 class OutreachComplianceError(Exception):
@@ -276,6 +277,57 @@ class OutreachService:
         return recruiters
 
     @classmethod
+    def predict_recruiter_emails(
+        cls,
+        full_name: str,
+        company_name: str,
+        domain: Optional[str] = None
+    ) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Synthesizes standard corporate email permutations for a named individual at the target company
+        and evaluates live DNS MX deliverability for each candidate.
+        """
+        norm_domain = cls.normalize_company_domain(company_name, domain)
+        clean_name = re.sub(r"[^a-zA-Z\s]", "", full_name).strip()
+        parts = [p.lower() for p in clean_name.split() if p]
+
+        if not parts:
+            first = "recruiting"
+            last = ""
+        elif len(parts) == 1:
+            first = parts[0]
+            last = ""
+        else:
+            first = parts[0]
+            last = parts[-1]
+
+        patterns = []
+        if first and last:
+            patterns.append((f"{first}.{last}@{norm_domain}", "first.last (Enterprise Standard)"))
+            patterns.append((f"{first}@{norm_domain}", "first name only"))
+            patterns.append((f"{first[0]}{last}@{norm_domain}", "first initial + last name"))
+            patterns.append((f"{first}{last[0]}@{norm_domain}", "first name + last initial"))
+            patterns.append((f"{first}_{last}@{norm_domain}", "first_last"))
+        elif first:
+            patterns.append((f"{first}@{norm_domain}", "first name only"))
+            patterns.append((f"recruiting@{norm_domain}", "verified team inbox"))
+
+        candidates = []
+        for email, pattern_name in patterns:
+            v_res = EmailDeliverabilityService.verify_email(email)
+            conf = v_res.get("confidence_score", 90.0)
+            status = v_res.get("status", "valid")
+            candidates.append({
+                "email": email,
+                "pattern_name": pattern_name,
+                "confidence_score": conf,
+                "verification_status": status,
+                "is_deliverable": status == "valid" and conf >= 80.0
+            })
+
+        return norm_domain, candidates
+
+    @classmethod
     def verify_email_deliverability(cls, email: str) -> DeliverabilityResult:
         """
         Validates email deliverability via real DNS MX verification and optional ZeroBounce / Hunter API.
@@ -292,18 +344,33 @@ class OutreachService:
             status=status,
             confidence_score=confidence,
             is_deliverable=is_deliverable,
+            is_catch_all=v_res.get("is_catch_all", False),
             smtp_check_performed=False,
             provider="DNS MX & ZeroBounce / Hunter Engine",
         )
 
     @classmethod
     def generate_opt_out_token(cls, recipient_email: str) -> str:
-        """Generates an HMAC-SHA256 authenticated opt-out token."""
-        secret = "rolesync_compliance_secret_key"
+        """Generates an HMAC-SHA256 authenticated opt-out token using enterprise secret key."""
+        secret = getattr(settings, "SECRET_KEY", "rolesync_compliance_secret_key")
         nonce = secrets.token_hex(8)
-        raw = f"{recipient_email}:{nonce}"
-        sig = hmac.new(secret.encode(), raw.encode(), hashlib.sha256).hexdigest()[:16]
+        raw = f"{recipient_email.lower().strip()}:{nonce}"
+        sig = hmac.new(secret.encode("utf-8"), raw.encode("utf-8"), hashlib.sha256).hexdigest()[:16]
         return f"{nonce}_{sig}"
+
+    @classmethod
+    def verify_opt_out_token(cls, token: str, recipient_email: str) -> bool:
+        """Cryptographically verifies an HMAC-SHA256 opt-out token."""
+        try:
+            if not token or "_" not in token:
+                return False
+            nonce, sig = token.split("_", 1)
+            secret = getattr(settings, "SECRET_KEY", "rolesync_compliance_secret_key")
+            raw = f"{recipient_email.lower().strip()}:{nonce}"
+            expected_sig = hmac.new(secret.encode("utf-8"), raw.encode("utf-8"), hashlib.sha256).hexdigest()[:16]
+            return hmac.compare_digest(sig, expected_sig)
+        except Exception:
+            return False
 
     @classmethod
     def get_daily_usage(cls, user_id: str) -> int:
@@ -383,6 +450,22 @@ class OutreachService:
 
         word_count = len(body_core.split())
 
+        # Generate LinkedIn Connection Request Note (< 300 chars, ideal 200-250 chars)
+        first_name_short = recruiter_name.split()[0] if recruiter_name and not any(term in lower_recruiter for term in ["team", "recruiting", "channel"]) else "there"
+        li_note = f"Hi {first_name_short}, I saw the {target_job_title} role at {company_name} and recently applied. Given my background as a {candidate_role}, I'd love to connect and follow your team's engineering growth!"
+        if len(li_note) > 295:
+            li_note = f"Hi {first_name_short}, I applied for the {target_job_title} role at {company_name}. As a {candidate_role}, I would love to connect and follow your work!"
+
+        # Generate LinkedIn InMail / Direct Message (< 150 words)
+        li_inmail = (
+            f"Hi {first_name_short},\n\n"
+            f"I recently applied for the {target_job_title} role at {company_name} and wanted to reach out directly. "
+            f"As a {candidate_role}, {short_summary} "
+            f"I'm eager to contribute to {company_name}'s team and would welcome a brief conversation if there's mutual interest.\n\n"
+            f"Thank you for your time,\n"
+            f"{candidate_name}"
+        )
+
         # Enforce CAN-SPAM & GDPR requirements
         address = physical_address or cls.DEFAULT_PHYSICAL_ADDRESS
         opt_out_token = cls.generate_opt_out_token(recruiter_email)
@@ -425,6 +508,8 @@ class OutreachService:
             physical_address=address,
             is_compliant=is_compliant,
             validation_errors=validation_errors,
+            linkedin_connection_note=li_note,
+            linkedin_inmail_message=li_inmail,
         )
 
         return OutreachSynthesizeResponse(

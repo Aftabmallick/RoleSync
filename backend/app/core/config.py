@@ -8,6 +8,15 @@ class Settings(BaseSettings):
     VERSION: str = "2.0.0"
     API_V1_STR: str = "/api/v1"
     
+    # CORS Allowed Origins
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+    ]
+    
     # Security & Cryptography
     SECRET_KEY: str = "rolesync-dev-insecure-secret-key-change-in-production-12345678"
     # 32-byte hex string for Master Key Encryption Key (KEK) in HKDF
@@ -22,6 +31,7 @@ class Settings(BaseSettings):
     
     # PostgreSQL Database
     POSTGRES_SERVER: str = "localhost"
+    POSTGRES_HOST: Optional[str] = None
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
@@ -68,7 +78,8 @@ class Settings(BaseSettings):
     def get_database_url(self) -> str:
         if self.DATABASE_URL:
             return self.DATABASE_URL
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        host = self.POSTGRES_HOST or self.POSTGRES_SERVER
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{host}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
 
 settings = Settings()

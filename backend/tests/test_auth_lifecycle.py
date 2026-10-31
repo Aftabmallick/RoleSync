@@ -78,6 +78,57 @@ class TestAuthLifecycle(unittest.TestCase):
                 tokens["refresh_token"], "attacker_fingerprint_xyz", self.email, self.tier
             )
 
+    def test_register_login_and_me_api_lifecycle(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+        client = TestClient(app)
+
+        test_email = f"test_cand_{uuid.uuid4().hex[:6]}@example.com"
+        test_pwd = "StrongPassword123!"
+
+        # 1. Register candidate
+        reg_resp = client.post("/api/v1/auth/register", json={
+            "email": test_email,
+            "password": test_pwd,
+            "full_name": "Test Candidate Dev"
+        })
+        self.assertEqual(reg_resp.status_code, 201)
+        data = reg_resp.json()
+        self.assertIn("access_token", data)
+        self.assertEqual(data["user"]["email"], test_email)
+        self.assertEqual(data["user"]["full_name"], "Test Candidate Dev")
+        token = data["access_token"]
+
+        # 2. Duplicate registration rejected
+        dup_resp = client.post("/api/v1/auth/register", json={
+            "email": test_email,
+            "password": test_pwd,
+            "full_name": "Duplicate Candidate"
+        })
+        self.assertEqual(dup_resp.status_code, 400)
+
+        # 3. Login with correct password
+        login_resp = client.post("/api/v1/auth/login", json={
+            "email": test_email,
+            "password": test_pwd
+        })
+        self.assertEqual(login_resp.status_code, 200)
+        login_data = login_resp.json()
+        self.assertIn("access_token", login_data)
+
+        # 4. Login with incorrect password rejected
+        bad_login = client.post("/api/v1/auth/login", json={
+            "email": test_email,
+            "password": "WrongPassword!"
+        })
+        self.assertEqual(bad_login.status_code, 401)
+
+        # 5. Access /auth/me with Bearer token
+        me_resp = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        self.assertEqual(me_resp.status_code, 200)
+        me_data = me_resp.json()
+        self.assertEqual(me_data["email"], test_email)
+
 
 if __name__ == "__main__":
     unittest.main()

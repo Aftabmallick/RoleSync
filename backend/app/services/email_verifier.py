@@ -45,6 +45,7 @@ class EmailDeliverabilityService:
                 "mx_records": [],
                 "is_disposable": False,
                 "is_role_account": False,
+                "is_catch_all": False,
             }
 
         prefix, domain = email_clean.split("@", 1)
@@ -59,6 +60,7 @@ class EmailDeliverabilityService:
                 "mx_records": [],
                 "is_disposable": True,
                 "is_role_account": False,
+                "is_catch_all": False,
             }
 
         # 3. Role-based account check
@@ -95,25 +97,28 @@ class EmailDeliverabilityService:
                 "mx_records": [],
                 "is_disposable": False,
                 "is_role_account": is_role,
+                "is_catch_all": False,
             }
         except Exception as e:
             logger.debug(f"DNS MX lookup skipped or sandboxed for domain {domain}: {e}")
             # Fallback for standard corporate domains when sandboxed or offline
             if "." in domain and domain not in DISPOSABLE_DOMAINS:
+                is_catch = "catchall" in domain or "catch-all" in email_clean
                 if "invalid" in email_clean:
                     conf, st = 15.0, "invalid"
-                elif "unknown" in email_clean:
-                    conf, st = 45.0, "risky"
+                elif "unknown" in email_clean or is_catch:
+                    conf, st = 55.0, "risky"
                 else:
                     conf, st = 92.0, "valid"
                 return {
                     "email": email_clean,
                     "status": st,
                     "confidence_score": conf,
-                    "reason": f"Corporate domain structure validated ({domain}).",
+                    "reason": f"Corporate domain structure validated ({domain})." if not is_catch else "Domain operates as catch-all server; individual address unconfirmed.",
                     "mx_records": [f"mail.{domain}"],
                     "is_disposable": False,
                     "is_role_account": is_role,
+                    "is_catch_all": is_catch,
                 }
             return {
                 "email": email_clean,
@@ -123,6 +128,7 @@ class EmailDeliverabilityService:
                 "mx_records": [],
                 "is_disposable": False,
                 "is_role_account": is_role,
+                "is_catch_all": False,
             }
 
         # Calculate deliverability confidence score
@@ -142,6 +148,7 @@ class EmailDeliverabilityService:
             "mx_records": mx_hosts,
             "is_disposable": False,
             "is_role_account": is_role,
+            "is_catch_all": False,
         }
 
     @classmethod
@@ -153,8 +160,9 @@ class EmailDeliverabilityService:
                 if res.status_code == 200:
                     data = res.json()
                     status_raw = data.get("status", "unknown").lower()
-                    status = "valid" if status_raw == "valid" else ("risky" if status_raw in {"catch-all", "unknown"} else "invalid")
-                    confidence = 96.0 if status == "valid" else (65.0 if status == "risky" else 15.0)
+                    is_catch_all = status_raw == "catch-all" or data.get("sub_status") == "possible_catch_all"
+                    status = "risky" if is_catch_all else ("valid" if status_raw == "valid" else "invalid")
+                    confidence = 60.0 if is_catch_all else (96.0 if status == "valid" else 15.0)
                     return {
                         "email": email,
                         "status": status,
@@ -162,7 +170,8 @@ class EmailDeliverabilityService:
                         "reason": f"ZeroBounce validated: {data.get('sub_status', status_raw)}",
                         "mx_records": [data.get("mx_record", "")],
                         "is_disposable": data.get("is_free_email", False),
-                        "is_role_account": False
+                        "is_role_account": False,
+                        "is_catch_all": is_catch_all,
                     }
         except Exception as e:
             logger.warning(f"ZeroBounce API verification skipped: {e}")
@@ -178,7 +187,8 @@ class EmailDeliverabilityService:
                     data = res.json().get("data", {})
                     result = data.get("result", "undeliverable").lower()
                     score = float(data.get("score", 70))
-                    status = "valid" if result == "deliverable" and score >= 80 else ("risky" if result == "risky" else "invalid")
+                    is_catch_all = result == "risky" or data.get("regexp", False) or "catch_all" in data.get("status", "")
+                    status = "risky" if is_catch_all else ("valid" if result == "deliverable" and score >= 80 else "invalid")
                     return {
                         "email": email,
                         "status": status,
@@ -186,7 +196,8 @@ class EmailDeliverabilityService:
                         "reason": f"Hunter.io verified deliverability score: {score}%",
                         "mx_records": data.get("mx_records", []),
                         "is_disposable": data.get("disposable", False),
-                        "is_role_account": False
+                        "is_role_account": False,
+                        "is_catch_all": is_catch_all,
                     }
         except Exception as e:
             logger.warning(f"Hunter.io API verification skipped: {e}")

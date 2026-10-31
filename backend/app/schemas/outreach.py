@@ -35,6 +35,7 @@ class DeliverabilityResult(BaseModel):
     status: str  # 'valid', 'risky', 'invalid'
     confidence_score: float = Field(..., ge=0.0, le=100.0)
     is_deliverable: bool
+    is_catch_all: bool = Field(False, description="Whether the domain accepts all addresses indiscriminately")
     smtp_check_performed: bool = Field(False, description="Must be False - raw port 25 SMTP checks are prohibited")
     provider: str = "Hunter/ZeroBounce REST"
 
@@ -61,6 +62,8 @@ class OutreachDraft(BaseModel):
     physical_address: str
     is_compliant: bool
     validation_errors: List[str] = []
+    linkedin_connection_note: Optional[str] = None
+    linkedin_inmail_message: Optional[str] = None
 
 
 class OutreachSynthesizeResponse(BaseModel):
@@ -68,4 +71,25 @@ class OutreachSynthesizeResponse(BaseModel):
     mode: str
     status: str  # 'READY_FOR_PREVIEW' or 'ENQUEUED_AUTOPILOT'
     daily_quota_remaining: int
+
+
+class PredictEmailRequest(BaseModel):
+    full_name: str = Field(..., description="Full name of recruiter or hiring manager")
+    company_name: str = Field(..., description="Target company name")
+    domain: Optional[str] = Field(None, description="Company website domain if known")
+
+
+class PredictedEmailOption(BaseModel):
+    email: str
+    pattern_name: str
+    confidence_score: float
+    verification_status: str
+    is_deliverable: bool
+
+
+class PredictEmailResponse(BaseModel):
+    full_name: str
+    company_name: str
+    domain: str
+    candidates: List[PredictedEmailOption]
 

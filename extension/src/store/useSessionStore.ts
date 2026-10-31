@@ -16,6 +16,7 @@ export interface SessionState {
   currentJd: JDExtractedPayload | null;
   autofillStatus: 'IDLE' | 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED';
 
+  initAuth: () => Promise<void>;
   setAuth: (user: UserProfile, accessToken: string, refreshToken: string) => void;
   setCurrentJd: (jd: JDExtractedPayload | null) => void;
   setAutofillStatus: (status: 'IDLE' | 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED') => void;
@@ -29,6 +30,25 @@ export const useSessionStore = create<SessionState>((set) => ({
   refreshToken: null,
   currentJd: null,
   autofillStatus: 'IDLE',
+
+  initAuth: async () => {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      try {
+        const stored = await chrome.storage.local.get('rolesync_auth');
+        if (stored?.rolesync_auth?.accessToken) {
+          const { user, accessToken, refreshToken } = stored.rolesync_auth;
+          set({
+            isAuthenticated: true,
+            user,
+            accessToken,
+            refreshToken,
+          });
+        }
+      } catch (e) {
+        console.warn('[RoleSync Session] Could not restore auth from storage:', e);
+      }
+    }
+  },
 
   setAuth: (user, accessToken, refreshToken) => {
     set({
@@ -69,4 +89,3 @@ export const useSessionStore = create<SessionState>((set) => ({
     }
   },
 }));
-

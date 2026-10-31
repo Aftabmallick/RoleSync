@@ -41,6 +41,11 @@ extension/assets/
 .env.*.local
 *.pem
 *.key
+# Databases & Local data
+*.db
+*.sqlite3
+backend/data/
+backend/app/data/
 backend/app/api/data/
 
 # Operating System & IDE

@@ -1,13 +1,16 @@
 import uuid
-from fastapi import APIRouter, HTTPException, BackgroundTasks, status
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, status
 from app.schemas.tailor import TailorRequest, TailorTaskResponse, TailorResultResponse
 from app.tasks.tailor_tasks import orchestrator, task_store
+from app.core.limiter import limiter
 
 router = APIRouter(prefix="/tailor", tags=["Resume Tailoring"])
 
 
 @router.post("", response_model=TailorTaskResponse, status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("20/minute")
 async def enqueue_tailoring_task(
+    request: Request,
     payload: TailorRequest,
     background_tasks: BackgroundTasks
 ):

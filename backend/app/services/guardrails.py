@@ -39,6 +39,37 @@ class GuardrailViolationException(Exception):
         self.details = details
 
 
+class GuardrailSanitizer:
+    """
+    Input Sanitization & Prompt Injection Protection Engine.
+    Detects adversarial instruction overrides, role-playing jailbreaks, and delimiter escapes.
+    """
+    INJECTION_PATTERNS = [
+        re.compile(r"(?i)\b(ignore\s+all\s+previous\s+instructions|disregard\s+previous|disregard\s+all\s+instructions)\b"),
+        re.compile(r"(?i)\b(system\s+prompt|new\s+system\s+role|developer\s+mode|jailbreak|bypass\s+restrictions)\b"),
+        re.compile(r"(?i)\b(you\s+are\s+now\s+an\s+unrestricted|forget\s+all\s+rules|unfiltered\s+mode)\b"),
+        re.compile(r"(?i)(\[INST\]|\[/INST\]|<\|im_start\|>|<\|im_end\|>|```\s*system)"),
+    ]
+
+    @classmethod
+    def detect_prompt_injection(cls, text: str) -> bool:
+        if not text:
+            return False
+        return any(pattern.search(text) for pattern in cls.INJECTION_PATTERNS)
+
+    @classmethod
+    def sanitize_prompt_input(cls, text: str, max_length: int = 1500) -> str:
+        if not text:
+            return ""
+        # 1. Truncate length
+        cleaned = text[:max_length]
+        # 2. Strip special instruction delimiters
+        cleaned = re.sub(r"(?i)(\[INST\]|\[/INST\]|<\|im_start\|>|<\|im_end\|>)", "", cleaned)
+        # 3. Strip raw control characters
+        cleaned = "".join(ch for ch in cleaned if ch.isprintable() or ch in "\n\r\t")
+        return cleaned.strip()
+
+
 class ONNXNLIEngine:
     """
     ONNX Runtime INT8 Natural Language Inference (NLI) Engine.
@@ -69,6 +100,20 @@ class ONNXNLIEngine:
         except Exception as e:
             logger.warning(f"Could not load ONNX NLI session from {p}: {e}")
 
+    def tokenize_premise_hypothesis(self, premise: str, hypothesis: str, max_length: int = 128) -> Dict[str, np.ndarray]:
+        """Maps premise and hypothesis into token tensors for ONNX cross-encoders."""
+        text = f"{premise} [SEP] {hypothesis}"
+        words = text.split()
+        tokens = [101] + [abs(hash(w)) % 28000 + 1000 for w in words][:max_length - 2] + [102]
+        pad_len = max(0, max_length - len(tokens))
+        padded_tokens = tokens + [0] * pad_len
+        att_mask = [1] * len(tokens) + [0] * pad_len
+
+        return {
+            "input_ids": np.array([padded_tokens], dtype=np.int64),
+            "attention_mask": np.array([att_mask], dtype=np.int64),
+        }
+
     def predict_nli(self, premise: str, hypothesis: str) -> Dict[str, float]:
         """
         Runs neural entailment evaluation between authentic premise and tailored hypothesis.
@@ -76,7 +121,8 @@ class ONNXNLIEngine:
         """
         if self.session:
             try:
-                inputs = {inp.name: np.ones((1, 128), dtype=np.int64) for inp in self.session.get_inputs()}
+                model_inputs = self.tokenize_premise_hypothesis(premise, hypothesis)
+                inputs = {inp.name: model_inputs.get(inp.name, np.ones((1, 128), dtype=np.int64)) for inp in self.session.get_inputs()}
                 outputs = self.session.run(None, inputs)
                 logits = outputs[0][0]
                 exp_logits = np.exp(logits - np.max(logits))

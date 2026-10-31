@@ -1,10 +1,23 @@
 from typing import Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class GoogleAuthRequest(BaseModel):
     id_token: str
     device_fingerprint: str
+
+
+class UserRegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=6, description="Candidate account password")
+    full_name: str = Field(..., min_length=2, description="Candidate full name")
+    device_fingerprint: Optional[str] = "browser_client"
+
+
+class UserLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+    device_fingerprint: Optional[str] = "browser_client"
 
 
 class TokenRefreshRequest(BaseModel):
@@ -28,4 +41,3 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user: Optional[UserResponse] = None
-

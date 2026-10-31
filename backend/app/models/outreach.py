@@ -2,15 +2,14 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import String, DateTime, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.core.database import Base
+from app.core.database import Base, PG_UUID
 
 
 class OutreachEmail(Base):
     __tablename__ = "outreach_emails"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID, primary_key=True, default=uuid.uuid4)
     application_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     recipient_email: Mapped[str] = mapped_column(String(255), nullable=False)

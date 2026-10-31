@@ -1,15 +1,14 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import String, DateTime, ForeignKey, Integer
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.core.database import Base
+from app.core.database import Base, PG_UUID
 
 
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     device_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -22,7 +21,7 @@ class RefreshToken(Base):
 class UsageTracking(Base):
     __tablename__ = "usage_tracking"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     action_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { fetchWithAuth } from '../../utils/apiClient';
 
 export interface PersonalInfo {
   full_name: string;
@@ -212,7 +213,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
           setProfile(res.rolesync_master_profile);
         } else {
           // Fetch from backend
-          fetch(`${apiBaseUrl}/profile`)
+          fetchWithAuth(`${apiBaseUrl}/profile`)
             .then((r) => r.json())
             .then((data) => {
               if (data.profile) {
@@ -247,7 +248,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
         const base64Data = (reader.result as string).split(',')[1];
         setParseNotification('Extracting skills via canonical taxonomy & parsing experience...');
 
-        const res = await fetch(`${apiBaseUrl}/profile/parse-resume`, {
+        const res = await fetchWithAuth(`${apiBaseUrl}/profile/parse-resume`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pdf_base64: base64Data }),
@@ -289,7 +290,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
     setParseNotification('Extracting entities and structuring profile...');
 
     try {
-      const res = await fetch(`${apiBaseUrl}/profile/parse-resume`, {
+      const res = await fetchWithAuth(`${apiBaseUrl}/profile/parse-resume`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ raw_text: pastedResumeText }),
@@ -328,7 +329,7 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
       }
 
       // 2. Sync to backend vault
-      const res = await fetch(`${apiBaseUrl}/profile`, {
+      const res = await fetchWithAuth(`${apiBaseUrl}/profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profile),

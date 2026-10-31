@@ -1,13 +1,16 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from app.schemas.cover_letter import CoverLetterRequest, CoverLetterResponse
 from app.services.cover_letter_service import CoverLetterService
 from app.core.jwt import get_current_user_id
+from app.core.limiter import limiter
 
 router = APIRouter(prefix="/cover-letter", tags=["Cover Letter Generator"])
 
 
 @router.post("/synthesize", response_model=CoverLetterResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("20/minute")
 async def synthesize_cover_letter(
+    request: Request,
     payload: CoverLetterRequest,
     user_id: str = Depends(get_current_user_id)
 ):
