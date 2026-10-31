@@ -460,11 +460,22 @@ class ResumeEnhancerService:
                         return uuid.uuid5(uuid.NAMESPACE_DNS, str(val))
 
                 u_id = _to_uuid(user_id)
-                stmt = delete(ResumeVersion).where(ResumeVersion.user_id == u_id)
-                res = await db.execute(stmt)
-                await db.commit()
-                if res.rowcount > 0:
-                    deleted_from_db = True
+                stmt_sel = select(ResumeVersion).where(ResumeVersion.user_id == u_id)
+                res_sel = await db.execute(stmt_sel)
+                user_versions = res_sel.scalars().all()
+                target_ver = None
+                for v in user_versions:
+                    v_short = f"ver_{v.id.hex[:10]}" if isinstance(v.id, uuid.UUID) else str(v.id)
+                    if v_short == version_id or str(v.id) == version_id:
+                        target_ver = v
+                        break
+
+                if target_ver:
+                    stmt = delete(ResumeVersion).where(ResumeVersion.id == target_ver.id, ResumeVersion.user_id == u_id)
+                    res = await db.execute(stmt)
+                    await db.commit()
+                    if res.rowcount > 0:
+                        deleted_from_db = True
             except Exception as dbe:
                 logger.warning(f"Could not delete ResumeVersion from DB: {dbe}")
 
