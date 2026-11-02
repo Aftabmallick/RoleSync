@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Snowflake Careers - Staff Distributed Systems Engineer</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 2rem; background: #f8fafc; color: #1e293b; }
+    .card { background: white; border-radius: 8px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); max-width: 800px; margin: 0 auto 24px; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+    input[type="text"], input[type="tel"], select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+    .stage-container { display: none; }
+    .stage-container.active { display: block; }
+    .progress-bar { display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; font-size: 13px; font-weight: 500; }
+    .progress-step.active { color: #2563eb; font-weight: 700; border-bottom: 2px solid #2563eb; margin-bottom: -14px; padding-bottom: 12px; }
+    button.next-btn { background: #2563eb; color: white; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    button.next-btn:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+
+  <!-- Job Description Header & Body for JobExtractorEngine -->
+  <div class="card" id="job-header-card">
+    <span data-automation-id="company" style="font-weight: 600; color: #64748b; text-transform: uppercase; font-size: 12px;">Snowflake</span>
+    <h1 data-automation-id="jobPostingHeader" style="margin: 8px 0 16px 0; font-size: 26px;">Staff Distributed Systems Engineer</h1>
+    <div data-automation-id="jobPostingDescription">
+      <p>Snowflake is seeking an exceptional Staff Distributed Systems Engineer to lead the architecture and scaling of our distributed metadata and storage engines.</p>
+      <h3>Responsibilities:</h3>
+      <ul>
+        <li>Architect highly available, fault-tolerant distributed storage and consensus protocols (Raft, Paxos).</li>
+        <li>Optimize query execution throughput and latency across multi-tenant cloud clusters in AWS, Azure, and GCP.</li>
+        <li>Lead technical design for multi-region replication and low-latency consensus systems.</li>
+      </ul>
+      <h3>Requirements:</h3>
+      <ul>
+        <li>8+ years of experience with distributed systems design, concurrency, and high-throughput networking.</li>
+        <li>Proficiency in Go, C++, Rust, or Java for systems programming.</li>
+        <li>Deep understanding of Kubernetes, Raft, Kafka, gRPC, and PostgreSQL internals.</li>
+        <li>Experience optimizing cloud resource utilization and memory allocations.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Workday Multi-Stage Application Form -->
+  <div class="card" id="application-wizard">
+    <div data-automation-id="progressBar" class="progress-bar">
+      <div id="step-info" class="progress-step active" aria-current="step">My Information</div>
+      <div id="step-exp" class="progress-step">My Experience</div>
+      <div id="step-questions" class="progress-step">Application Questions</div>
+      <div id="step-eeo" class="progress-step">Voluntary Disclosures</div>
+      <div id="step-review" class="progress-step">Review</div>
+    </div>
+
+    <!-- Stage 1: MY_INFORMATION -->
+    <div id="stage-my-information" class="stage-container active" data-automation-id="legalNameSection">
+      <h2>My Information</h2>
+      <div class="form-group">
+        <label for="firstName">First Name</label>
+        <input type="text" id="firstName" data-automation-id="legalNameSection_firstName" name="legalNameSection_firstName" />
+      </div>
+      <div class="form-group">
+        <label for="lastName">Last Name</label>
+        <input type="text" id="lastName" data-automation-id="legalNameSection_lastName" name="legalNameSection_lastName" />
+      </div>
+      <div class="form-group" data-automation-id="addressSection">
+        <label for="addressLine1">Address Line 1</label>
+        <input type="text" id="addressLine1" data-automation-id="addressSection_addressLine1" name="addressSection_addressLine1" />
+      </div>
+      <div class="form-group">
+        <label for="city">City</label>
+        <input type="text" id="city" data-automation-id="addressSection_city" name="addressSection_city" />
+      </div>
+      <div class="form-group">
+        <label for="postalCode">Postal Code</label>
+        <input type="text" id="postalCode" data-automation-id="addressSection_postalCode" name="addressSection_postalCode" />
+      </div>
+      <div class="form-group">
+        <label for="phone">Phone Number</label>
+        <input type="tel" id="phone" data-automation-id="phone-number" name="phone-number" />
+      </div>
+      <div style="margin-top: 20px;">
+        <button type="button" class="next-btn" data-automation-id="bottom-navigation-next-button" onclick="advanceStage(1)">Save and Continue</button>
+      </div>
+    </div>
+
+    <!-- Stage 2: MY_EXPERIENCE -->
+    <div id="stage-my-experience" class="stage-container" data-automation-id="resumeSection">
+      <h2>My Experience</h2>
+      <div class="form-group">
+        <label for="resume">Resume / CV Upload</label>
+        <input type="file" id="resume" data-automation-id="file-upload-input-drop-zone" />
+      </div>
+      <div class="form-group">
+        <label for="jobTitle">Recent Job Title</label>
+        <input type="text" id="jobTitle" data-automation-id="jobTitle" name="jobTitle" />
+      </div>
+      <div class="form-group">
+        <label for="companyName">Company</label>
+        <input type="text" id="companyName" data-automation-id="company" name="company" />
+      </div>
+      <div class="form-group">
+        <label for="linkedin">LinkedIn URL</label>
+        <input type="text" id="linkedin" data-automation-id="website" name="website" />
+      </div>
+      <div style="margin-top: 20px;">
+        <button type="button" class="next-btn" data-automation-id="bottom-navigation-next-button" onclick="advanceStage(2)">Save and Continue</button>
+      </div>
+    </div>
+
+    <!-- Stage 3: APPLICATION_QUESTIONS -->
+    <div id="stage-application-questions" class="stage-container" data-automation-id="questionnaireSection">
+      <h2>Application Questions</h2>
+      <div class="form-group">
+        <label>Are you legally authorized to work in the United States?</label>
+        <div>
+          <label><input type="radio" name="legallyAuthorized" value="yes" /> Yes</label>
+          <label style="margin-left: 16px;"><input type="radio" name="legallyAuthorized" value="no" /> No</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Will you now or in the future require visa sponsorship?</label>
+        <div>
+          <label><input type="radio" name="sponsorship" value="yes" /> Yes</label>
+          <label style="margin-left: 16px;"><input type="radio" name="sponsorship" value="no" /> No</label>
+        </div>
+      </div>
+      <div style="margin-top: 20px;">
+        <button type="button" class="next-btn" data-automation-id="bottom-navigation-next-button" onclick="advanceStage(3)">Save and Continue</button>
+      </div>
+    </div>
+
+    <!-- Stage 4: VOLUNTARY_DISCLOSURES -->
+    <div id="stage-voluntary-disclosures" class="stage-container" data-automation-id="eeoSection">
+      <h2>Voluntary Disclosures</h2>
+      <div class="form-group">
+        <label for="gender">Gender</label>
+        <select id="gender" data-automation-id="gender">
+          <option value="">Select an option</option>
+          <option value="Decline to self-identify">Decline to self-identify</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="veteranStatus">Veteran Status</label>
+        <select id="veteranStatus" data-automation-id="veteranStatus">
+          <option value="">Select an option</option>
+          <option value="I am not a protected veteran">I am not a protected veteran</option>
+          <option value="I identify as one or more protected veterans">I identify as one or more protected veterans</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="disabilityStatus">Disability Status</label>
+        <select id="disabilityStatus" data-automation-id="disabilityStatus">
+          <option value="">Select an option</option>
+          <option value="No, I do not have a disability">No, I do not have a disability</option>
+          <option value="Yes, I have a disability">Yes, I have a disability</option>
+        </select>
+      </div>
+      <div style="margin-top: 20px;">
+        <button type="button" class="next-btn" data-automation-id="bottom-navigation-next-button" onclick="advanceStage(4)">Save and Continue</button>
+      </div>
+    </div>
+
+    <!-- Stage 5: REVIEW -->
+    <div id="stage-review" class="stage-container" data-automation-id="reviewSection">
+      <h2>Review & Submit</h2>
+      <p>Please review your responses before final submission.</p>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="agree" data-automation-id="agreeCheckbox" />
+          I certify that all information provided is accurate and true.
+        </label>
+      </div>
+      <div style="margin-top: 20px;">
+        <button type="button" class="next-btn" data-automation-id="bottom-navigation-next-button" onclick="advanceStage(5)">Submit Application</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const stages = [
+      { id: 'stage-my-information', stepId: 'step-info' },
+      { id: 'stage-my-experience', stepId: 'step-exp' },
+      { id: 'stage-application-questions', stepId: 'step-questions' },
+      { id: 'stage-voluntary-disclosures', stepId: 'step-eeo' },
+      { id: 'stage-review', stepId: 'step-review' },
+    ];
+
+    function advanceStage(currentIndex) {
+      if (currentIndex >= stages.length) return;
+      stages.forEach((s, idx) => {
+        const el = document.getElementById(s.id);
+        const stepEl = document.getElementById(s.stepId);
+        if (idx === currentIndex) {
+          el.classList.add('active');
+          stepEl.classList.add('active');
+          stepEl.setAttribute('aria-current', 'step');
+        } else {
+          el.classList.remove('active');
+          stepEl.classList.remove('active');
+          stepEl.removeAttribute('aria-current');
+        }
+      });
+    }
+  </script>
+</body>
+</html>

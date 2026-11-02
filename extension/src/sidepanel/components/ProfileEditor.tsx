@@ -53,6 +53,12 @@ export interface PreferencesData {
   gender?: string;
   veteran_status?: string;
   disability_status?: string;
+  targetRoles?: string[];
+  targetLocations?: string[];
+  minBaseSalary?: number;
+  remotePreference?: string;
+  workAuthorization?: string;
+  requireSponsorship?: boolean;
 }
 
 export interface MasterProfileData {
@@ -67,12 +73,12 @@ export interface MasterProfileData {
 
 export const SAMPLE_DEMO_PROFILE: MasterProfileData = {
   personal: {
-    full_name: 'Alex Mercer',
-    email: 'alex@mercer.dev',
+    full_name: 'Jordan Hayes',
+    email: 'jordan.hayes@example.com',
     phone: '+1 (555) 019-2834',
     location: 'San Francisco, CA',
-    linkedin: 'linkedin.com/in/alex-mercer',
-    github: 'github.com/alexmercer',
+    linkedin: 'linkedin.com/in/jordan-hayes',
+    github: 'github.com/jordanhayes',
   },
   preferences: {
     legally_authorized: true,
@@ -91,18 +97,18 @@ export const SAMPLE_DEMO_PROFILE: MasterProfileData = {
   ],
   experience: [
     {
-      company: 'Apex Systems',
+      company: 'TechFlow Systems',
       role: 'Senior Software Engineer',
       start_date: '2021',
       end_date: 'Present',
       location: 'San Francisco, CA',
       bullets: [
         {
-          id: 'b_apex_1',
+          id: 'b_exp_1',
           text: 'Refactored payment gateway microservice, reducing response latency by 1.5s and saving $1,500,000 annually across 10x traffic volume.',
         },
         {
-          id: 'b_apex_2',
+          id: 'b_exp_2',
           text: 'Architected PostgreSQL distributed read replicas improving read throughput by 35%.',
         },
       ],
@@ -110,10 +116,10 @@ export const SAMPLE_DEMO_PROFILE: MasterProfileData = {
   ],
   projects: [
     {
-      name: 'TitanRAG',
+      name: 'CloudSync',
       subtitle: 'Multi-Tenant Multimodal RAG Platform',
       technologies: 'Python, FastAPI, PostgreSQL (RLS), Qdrant, Celery, LiteLLM, Redis',
-      link: 'github.com/alexmercer/titanrag',
+      link: 'github.com/jordanhayes/cloudsync',
       start_date: '2024',
       end_date: 'Present',
       bullets: [
@@ -145,6 +151,19 @@ export const BLANK_PROFILE: MasterProfileData = {
     location: '',
     linkedin: '',
     github: '',
+  },
+  preferences: {
+    legally_authorized: true,
+    requires_sponsorship: false,
+    gender: 'Decline to self-identify',
+    veteran_status: 'I am not a protected veteran',
+    disability_status: 'No, I do not have a disability',
+    targetRoles: [],
+    targetLocations: [],
+    minBaseSalary: undefined,
+    remotePreference: 'ANY',
+    workAuthorization: 'CITIZEN_OR_PR',
+    requireSponsorship: false,
   },
   skills: [],
   experience: [],
@@ -1590,6 +1609,13 @@ export const ProfileEditor: React.FC<ProfileEditorProps> = ({
               placeholder="Graduation Year (2020)"
               value={eduYear}
               onChange={(e) => setEduYear(e.target.value)}
+              className="p-1.5 border border-slate-300 rounded text-xs"
+            />
+            <input
+              type="text"
+              placeholder="GPA (e.g. 3.85)"
+              value={eduGpa}
+              onChange={(e) => setEduGpa(e.target.value)}
               className="p-1.5 border border-slate-300 rounded text-xs"
             />
           </div>

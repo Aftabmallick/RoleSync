@@ -1,11 +1,12 @@
 import unittest
-from app.tasks.tailor_tasks import celery_app, run_tailoring_pipeline_task
+from app.tasks.tailor_tasks import celery_app
 from app.services.guardrails import (
     ONNXNLIEngine,
     RobustGuardrailVerifier,
     TailoredResumeDraft,
     TailoredExperienceEntry,
-    TailoredBulletPoint
+    TailoredBulletPoint,
+    GuardrailViolationException
 )
 
 
@@ -19,15 +20,27 @@ class TestCeleryAndONNX(unittest.TestCase):
 
     def test_onnx_nli_engine_fallback_and_inference(self):
         engine = ONNXNLIEngine()
-        # Fallback predict_nli
+        # Fallback predict_nli: when weights are missing or session uninitialized,
+        # verify strict deterministic fail-safe invariant: P(contradiction) = 1.0, P(entailment) = 0.0
         scores = engine.predict_nli(
             premise="Architected distributed APIs with FastAPI.",
             hypothesis="Built scalable backend services using FastAPI."
         )
         self.assertIn("entailment", scores)
         self.assertIn("contradiction", scores)
-        self.assertGreaterEqual(scores["entailment"], 0.88)
-        self.assertLessEqual(scores["contradiction"], 0.15)
+        self.assertEqual(scores["contradiction"], 1.0)
+        self.assertEqual(scores["entailment"], 0.0)
+        self.assertEqual(scores.get("neutral", 0.0), 0.0)
+
+        # Identity entailment invariant: identical strings entail with P(entailment) = 1.0
+        id_scores = engine.predict_nli(
+            premise="Architected distributed APIs with FastAPI.",
+            hypothesis="Architected distributed APIs with FastAPI."
+        )
+        self.assertEqual(id_scores["entailment"], 1.0)
+        self.assertEqual(id_scores["contradiction"], 0.0)
+        self.assertEqual(id_scores.get("neutral", 0.0), 0.0)
+
 
     def test_robust_guardrails_with_onnx_engine(self):
         master_profile = {
@@ -64,7 +77,57 @@ class TestCeleryAndONNX(unittest.TestCase):
         # Must pass all 4 layers
         verifier.execute_all_layers(draft)
 
+    def test_failsafe_blocks_unentailed_bullet_without_model(self):
+        master_profile = {
+            "personal": {"full_name": "Dev Candidate"},
+            "skills": [{"name": "Python"}, {"name": "FastAPI"}],
+            "experience": [
+                {
+                    "company": "Tech Corp",
+                    "role": "Engineer",
+                    "bullets": [
+                        {"id": "b1", "text": "Built data pipelines in Python and FastAPI."}
+                    ]
+                }
+            ]
+        }
+        verifier = RobustGuardrailVerifier(master_profile, nli_client=ONNXNLIEngine())
+        draft = TailoredResumeDraft(
+            skills=["Python", "FastAPI"],
+            summary="Experienced software engineer.",
+            experience=[
+                TailoredExperienceEntry(
+                    company="Tech Corp",
+                    role="Engineer",
+                    dates="2021-Present",
+                    bullet_points=[
+                        TailoredBulletPoint(
+                            original_bullet_id="b1",
+                            tailored_text="Engineered distributed real-time pipelines using Python and FastAPI."
+                        )
+                    ]
+                )
+            ]
+        )
+        with self.assertRaises(GuardrailViolationException) as ctx:
+            verifier.execute_all_layers(draft)
+        self.assertEqual(ctx.exception.layer, "LAYER_3_NLI")
+        self.assertEqual(ctx.exception.details.get("contradiction_score"), 1.0)
+
+    def test_verify_bullet_factuality_interface_contract(self):
+        engine = ONNXNLIEngine()
+        # Identity entailment contract
+        res_ident = engine.verify_bullet_factuality("Deployed K8s clusters.", "Deployed K8s clusters.")
+        self.assertEqual(res_ident["entailment"], 1.0)
+        self.assertEqual(res_ident["contradiction"], 0.0)
+
+        # Fail-safe fallback contract
+        res_diff = engine.verify_bullet_factuality("Deployed K8s clusters.", "Never managed K8s clusters.")
+        self.assertEqual(res_diff["contradiction"], 1.0)
+        self.assertEqual(res_diff["entailment"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

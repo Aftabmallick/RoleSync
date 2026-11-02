@@ -20,6 +20,7 @@ from app.schemas.profile import (
     ResumeParseResponse
 )
 from app.services.resume_parser import resume_parser
+from app.core.errors import ProfileUninitializedException
 
 logger = logging.getLogger("rolesync.profile")
 
@@ -64,71 +65,6 @@ async def ensure_user_exists(db: AsyncSession, u_id: uuid.UUID, email: str = "ca
     return user_record
 
 
-DEFAULT_SAMPLE_PROFILE: Dict[str, Any] = {
-    "personal": {
-        "full_name": "Alex Mercer",
-        "email": "alex@mercer.dev",
-        "phone": "+1 555-019-2834",
-        "location": "San Francisco, CA",
-        "linkedin": "linkedin.com/in/alex-mercer",
-        "github": "github.com/alexmercer"
-    },
-    "skills": [
-        {"name": "Python", "category": "Languages"},
-        {"name": "FastAPI", "category": "Frameworks"},
-        {"name": "PostgreSQL", "category": "Databases"},
-        {"name": "Docker", "category": "DevOps"},
-        {"name": "Kubernetes", "category": "DevOps"},
-        {"name": "Redis", "category": "Databases"}
-    ],
-    "experience": [
-        {
-            "company": "Apex Systems",
-            "role": "Senior Software Engineer",
-            "start_date": "2021",
-            "end_date": "Present",
-            "location": "San Francisco, CA",
-            "bullets": [
-                {
-                    "id": "b_apex_1",
-                    "text": "Refactored payment gateway microservice, reducing response latency by 1.5s and saving $1,500,000 annually across 10x traffic volume."
-                },
-                {
-                    "id": "b_apex_2",
-                    "text": "Architected PostgreSQL distributed read replicas improving read throughput by 35%."
-                }
-            ]
-        }
-    ],
-    "projects": [
-        {
-            "name": "TitanRAG",
-            "subtitle": "Multi-Tenant Multimodal RAG Platform",
-            "technologies": "Python, FastAPI, PostgreSQL, Qdrant, Redis",
-            "link": "github.com/alexmercer/titanrag",
-            "start_date": "2024",
-            "end_date": "Present",
-            "bullets": [
-                {
-                    "id": "b_proj_1",
-                    "text": "Engineered multi-tenant multimodal RAG platform with PostgreSQL RLS and Qdrant isolation."
-                }
-            ]
-        }
-    ],
-    "education": [
-        {
-            "institution": "University of California, Berkeley",
-            "degree": "B.S.",
-            "field": "Computer Science",
-            "end_date": "2020",
-            "gpa": "3.85"
-        }
-    ],
-    "summary": "Senior Software Engineer specializing in high-throughput distributed systems, event-driven architectures, and cloud infrastructure."
-}
-
-
 @router.get("", response_model=MasterProfileResponse)
 async def get_master_profile(
     user_id: str = Depends(get_current_user_id),
@@ -141,12 +77,8 @@ async def get_master_profile(
     u_id = to_uuid(user_id)
 
     if encrypted_profiles_db._cleared and user_id not in encrypted_profiles_db:
-        return MasterProfileResponse(
-            user_id=user_id,
-            version=1,
-            profile=MasterProfilePayload(**DEFAULT_SAMPLE_PROFILE),
-            updated_at=datetime.now(timezone.utc).isoformat(),
-            message="Default initial Master Profile. Edit and save to encrypt in tenant vault."
+        raise ProfileUninitializedException(
+            detail="Candidate master profile is uninitialized. Please create and save your profile."
         )
 
     # 1. Query persistent PostgreSQL store
@@ -172,13 +104,8 @@ async def get_master_profile(
                 message="Master Profile decrypted from tenant vault."
             )
 
-        # Initial default profile
-        return MasterProfileResponse(
-            user_id=user_id,
-            version=1,
-            profile=MasterProfilePayload(**DEFAULT_SAMPLE_PROFILE),
-            updated_at=datetime.now(timezone.utc).isoformat(),
-            message="Default initial Master Profile. Edit and save to encrypt in tenant vault."
+        raise ProfileUninitializedException(
+            detail="Candidate master profile is uninitialized. Please create and save your profile."
         )
 
     # Decrypt AES-256-GCM ciphertext using tenant HKDF key

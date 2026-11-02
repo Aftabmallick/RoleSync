@@ -76,6 +76,12 @@ class ResumeEnhancerService:
         Benchmarks candidate resume against target JD, computes current 4-dimension ATS score,
         and derives granular, actionable suggested additions (skills, bullets, summary) with projected score boost.
         """
+        # Guard against None/empty inputs
+        resume = resume or {}
+        job_description = job_description or f"{target_role or 'Software Engineer'} at {company_name or 'Company'}"
+        target_role = target_role or "Software Engineer"
+        company_name = company_name or "Target Company"
+
         # 1. Extract required skills and keywords from JD
         jd_skills = taxonomy_service.extract_skills_from_text(job_description)
         jd_skills_list = sorted(list(jd_skills))
@@ -311,7 +317,11 @@ class ResumeEnhancerService:
         tailored_draft = {
             "summary": enhanced.get("summary", ""),
             "skills": [s.get("name", "") if isinstance(s, dict) else str(s) for s in enhanced.get("skills", [])],
-            "experience": tailored_draft_experience
+            "experience": tailored_draft_experience,
+            "projects": enhanced.get("projects", []),
+            "education": enhanced.get("education", []),
+            "personal": enhanced.get("personal") or enhanced.get("personal_info"),
+            "section_order": enhanced.get("section_order")
         }
 
         # 5. Compile single-page vector PDF (respecting base resume section_order)

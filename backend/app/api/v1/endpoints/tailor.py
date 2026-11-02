@@ -14,6 +14,7 @@ from app.api.v1.endpoints.profile import encrypted_profiles_db, to_uuid
 from app.schemas.tailor import TailorRequest, TailorTaskResponse, TailorResultResponse
 from app.tasks.tailor_tasks import orchestrator, task_store
 from app.core.limiter import limiter
+from app.core.errors import ProfileUninitializedException
 
 logger = logging.getLogger("rolesync.tailor")
 
@@ -34,7 +35,7 @@ def extract_candidate_name(profile: Dict[str, Any]) -> str:
 
 
 def is_complete_profile(profile: Optional[Dict[str, Any]]) -> bool:
-    """Validates that candidate master profile has full_name, skills, and experience."""
+    """Validates that candidate master profile has full_name, skills, and experience with non-empty bullets."""
     if not profile or not isinstance(profile, dict):
         return False
     name = extract_candidate_name(profile)
@@ -46,6 +47,23 @@ def is_complete_profile(profile: Optional[Dict[str, Any]]) -> bool:
     experience = profile.get("experience")
     if not experience or not isinstance(experience, list) or len(experience) == 0:
         return False
+
+    # Enforce that experience contains at least one entry with non-empty bullets
+    has_bullets = any(
+        isinstance(e, dict)
+        and isinstance(e.get("bullets"), list)
+        and len(e.get("bullets")) > 0
+        and any(
+            (isinstance(b, dict) and bool(b.get("text") or b.get("description") or b.get("id")))
+            or (isinstance(b, str) and bool(b.strip()))
+            or (b is not None and bool(str(b).strip()))
+            for b in e.get("bullets", [])
+        )
+        for e in experience
+    )
+    if not has_bullets:
+        return False
+
     return True
 
 
@@ -101,24 +119,15 @@ async def enqueue_tailoring_task(
         if is_complete_profile(db_profile):
             effective_profile = db_profile
         else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+            raise ProfileUninitializedException(
                 detail="Master profile with candidate identity is required for tailoring"
             )
 
     # Ensure experience bullet IDs are assigned
     for i, exp in enumerate(effective_profile.get("experience", [])):
-        if not exp.get("bullets"):
-            exp["bullets"] = [
-                {
-                    "id": f"b_{i+1}_1",
-                    "text": f"Engineered scalable infrastructure and microservices at {exp.get('company', 'Tech Organization')}."
-                }
-            ]
-        else:
-            for j, b in enumerate(exp["bullets"]):
-                if isinstance(b, dict) and not b.get("id"):
-                    b["id"] = f"b_{i+1}_{j+1}"
+        for j, b in enumerate(exp.get("bullets", [])):
+            if isinstance(b, dict) and not b.get("id"):
+                b["id"] = f"b_{i+1}_{j+1}"
 
     task_id = f"task_{uuid.uuid4().hex}"
     task_store[task_id] = {"status": "QUEUED", "stage": "INITIALIZED"}

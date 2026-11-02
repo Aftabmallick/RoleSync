@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta property="og:site_name" content="Databricks" />
+  <title>Databricks - AI Infrastructure Engineer</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 2rem; background: #fafafa; color: #1e293b; }
+    .posting-page { max-width: 820px; margin: 0 auto; background: white; padding: 36px; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .main-header-logo { font-size: 20px; font-weight: 800; color: #ff3621; text-decoration: none; margin-bottom: 24px; display: inline-block; }
+    .posting-headline h2 { font-size: 28px; margin: 0 0 16px 0; color: #0f172a; }
+    .form-group { margin-bottom: 18px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+    input[type="text"], input[type="email"], input[type="tel"], textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+    textarea { min-height: 120px; }
+    .postings-btn { background: #ff3621; color: white; border: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 15px; }
+    .postings-btn:hover { background: #e02a16; }
+  </style>
+</head>
+<body>
+  <div class="posting-page">
+    <a href="#" class="main-header-logo">Databricks</a>
+
+    <div class="posting-headline">
+      <h2>AI Infrastructure Engineer</h2>
+    </div>
+
+    <!-- Lever Job Description -->
+    <div class="content" data-qa="job-description">
+      <p>Databricks is creating the data and AI platform of the future. We are seeking a world-class AI Infrastructure Engineer to build high-performance distributed training, fine-tuning, and inference platforms on thousands of GPUs.</p>
+      <h3>What you will accomplish:</h3>
+      <ul>
+        <li>Build resilient, high-throughput distributed model training orchestration using PyTorch, Ray, and Slurm.</li>
+        <li>Architect auto-scaling GPU inference clusters with vLLM, TensorRT-LLM, and Triton Inference Server on Kubernetes.</li>
+        <li>Optimize CUDA memory allocation, NCCL communication rings, and cluster networking across heterogeneous hardware.</li>
+      </ul>
+      <h3>What we are looking for:</h3>
+      <ul>
+        <li>4+ years experience building and operating distributed AI systems, GPU orchestration, or cloud infrastructure.</li>
+        <li>Deep proficiency with Python, Go, Kubernetes, Docker, and Linux performance tuning.</li>
+        <li>Hands-on experience with LLM serving engines (vLLM, HuggingFace TGI) and model fine-tuning frameworks.</li>
+        <li>Solid understanding of distributed storage, object stores (S3/GCS), and PostgreSQL.</li>
+      </ul>
+    </div>
+
+    <hr style="margin: 32px 0; border: none; border-top: 1px solid #e2e8f0;" />
+
+    <!-- Lever Application Form -->
+    <h3 style="font-size: 20px; margin-bottom: 20px;">Submit your application</h3>
+    <form class="application-form" method="POST" action="/submit">
+      <div class="form-group">
+        <label for="name">Full Name <span style="color: #ff3621;">*</span></label>
+        <input type="text" id="name" name="name" placeholder="Full name" required />
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email <span style="color: #ff3621;">*</span></label>
+        <input type="email" id="email" name="email" placeholder="Email address" required />
+      </div>
+
+      <div class="form-group">
+        <label for="phone">Phone <span style="color: #ff3621;">*</span></label>
+        <input type="tel" id="phone" name="phone" placeholder="Phone number" required />
+      </div>
+
+      <div class="form-group">
+        <label for="org">Current Company</label>
+        <input type="text" id="org" name="org" placeholder="Current organization / company" />
+      </div>
+
+      <div class="form-group">
+        <label for="linkedin">LinkedIn URL</label>
+        <input type="text" id="linkedin" name="urls[LinkedIn]" placeholder="https://linkedin.com/in/username" />
+      </div>
+
+      <div class="form-group">
+        <label for="github">GitHub URL</label>
+        <input type="text" id="github" name="urls[GitHub]" placeholder="https://github.com/username" />
+      </div>
+
+      <div class="form-group">
+        <label for="portfolio">Portfolio / Other Website</label>
+        <input type="text" id="portfolio" name="urls[Portfolio]" placeholder="https://portfolio.dev" />
+      </div>
+
+      <div class="form-group">
+        <label for="resume">Resume / CV <span style="color: #ff3621;">*</span></label>
+        <input type="file" id="resume" name="resume" required />
+      </div>
+
+      <div class="form-group">
+        <label for="comments">Additional Information / Cover Letter</label>
+        <textarea id="comments" name="comments" placeholder="Add a cover letter or anything else you would like to share..."></textarea>
+      </div>
+
+      <div style="margin-top: 24px;">
+        <button type="submit" class="postings-btn">Submit Application</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>

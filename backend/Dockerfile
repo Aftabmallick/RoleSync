@@ -36,6 +36,9 @@ COPY --from=typst-builder /usr/local/bin/typst /usr/local/bin/typst
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Bundle quantized INT8 cross-encoder NLI model weights
+COPY models/onnx /app/models/onnx
+
 COPY . .
 
 # Dedicated non-root application user for unprivileged execution

@@ -64,12 +64,11 @@ class TestApiEndpoints(unittest.TestCase):
         self.assertIn("reuse detected", replay_resp.json()["detail"].lower())
 
     def test_master_profile_encryption_api(self):
-        # 1. GET default initial profile
+        # 1. GET uninitialized profile -> 400 PROFILE_UNINITIALIZED RFC 7807
         get_res = self.client.get("/api/v1/profile")
-        self.assertEqual(get_res.status_code, 200)
-        data = get_res.json()
-        self.assertIn("profile", data)
-        self.assertEqual(data["profile"]["personal"]["full_name"], "Alex Mercer")
+        self.assertEqual(get_res.status_code, 400)
+        self.assertEqual(get_res.headers.get("content-type"), "application/problem+json")
+        self.assertEqual(get_res.json()["title"], "PROFILE_UNINITIALIZED")
 
         # 2. POST custom profile (AES-256 HKDF encrypted)
         custom_payload = {

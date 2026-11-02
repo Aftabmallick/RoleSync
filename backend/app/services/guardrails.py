@@ -1,11 +1,11 @@
 import re
 import pathlib
 import logging
-from typing import List, Dict, Any, Set, Tuple, Optional
+import unicodedata
+from typing import List, Dict, Any, Set, Optional
 import numpy as np
 from pydantic import BaseModel, Field
 from app.services.taxonomy import normalize_skill
-from app.services.embedding_service import EmbeddingService
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,10 @@ class TailoredResumeDraft(BaseModel):
     skills: List[str]
     experience: List[TailoredExperienceEntry]
     summary: str
+    projects: Optional[List[Dict[str, Any]]] = None
+    education: Optional[List[Dict[str, Any]]] = None
+    personal: Optional[Dict[str, Any]] = None
+    section_order: Optional[List[str]] = None
 
 
 class GuardrailViolationException(Exception):
@@ -41,33 +45,101 @@ class GuardrailViolationException(Exception):
         self.details = details
 
 
+class SecurityException(Exception):
+    """Raised when an adversarial prompt injection or security violation is detected."""
+    def __init__(self, detail: str = "Prompt injection attempt detected in job description input"):
+        super().__init__(detail)
+        self.detail = detail
+
+
 class GuardrailSanitizer:
     """
-    Input Sanitization & Prompt Injection Protection Engine.
-    Detects adversarial instruction overrides, role-playing jailbreaks, and delimiter escapes.
+    Input Sanitization & Prompt Injection Protection Engine (Layer 1 Defense).
+    Hardened against adversarial instruction overrides, role-playing jailbreaks,
+    invisible zero-width unicode evasion, and modern LLM delimiters.
     """
-    INJECTION_PATTERNS = [
-        re.compile(r"(?i)\b(ignore\s+all\s+previous\s+instructions|disregard\s+previous|disregard\s+all\s+instructions)\b"),
-        re.compile(r"(?i)\b(system\s+prompt|new\s+system\s+role|developer\s+mode|jailbreak|bypass\s+restrictions)\b"),
-        re.compile(r"(?i)\b(you\s+are\s+now\s+an\s+unrestricted|forget\s+all\s+rules|unfiltered\s+mode)\b"),
-        re.compile(r"(?i)(\[INST\]|\[/INST\]|<\|im_start\|>|<\|im_end\|>|```\s*system)"),
+    DELIMITER_PATTERNS = [
+        r"<\|im_start\|>",
+        r"<\|im_end\|>",
+        r"<\|start_header_id\|>",
+        r"<\|end_header_id\|>",
+        r"<\|eot_id\|>",
+        r"<\|system\|>",
+        r"<\|user\|>",
+        r"<\|assistant\|>",
+        r"\[INST\]",
+        r"\[/INST\]",
+        r"<<SYS>>",
+        r"<</SYS>>",
+        r"```\s*system",
     ]
+    DELIMITER_REGEX = re.compile(r"(?i)(" + "|".join(DELIMITER_PATTERNS) + ")")
+
+    INJECTION_PATTERNS = [
+        # Intent hijacking & instruction override verbs
+        re.compile(
+            r"(?is)\b(ignore|disregard|neglect|override|bypass|forget|cancel)\b.*\b(instructions?|prompts?|rules?|system|constraints?|context|directives?|guidelines?)\b"
+        ),
+        # Role-play & persona injection
+        re.compile(
+            r"(?is)\b(you\s+are\s+now|pretend\s+(?:to\s+be|you\s+are)|act\s+as(?:\s+an?)?|system\s+prompt|new\s+system\s+role|developer\s+mode|jailbreak|unfiltered\s+mode|administrative\s+mode|bypass\s+restrictions)\b"
+        ),
+        # Modern LLM delimiters & instruction framing
+        re.compile(
+            r"(?i)(\[INST\]|\[/INST\]|<\|im_start\|>|<\|im_end\|>|<\|start_header_id\|>|<\|end_header_id\|>|<\|eot_id\|>|<\|system\|>|<\|user\|>|<\|assistant\|>|<<SYS>>|<\</SYS>>|```\s*system)"
+        ),
+    ]
+
+    HOMOGLYPH_MAP = str.maketrans({
+        # Cyrillic confusables
+        '\u0430': 'a', '\u0410': 'A',
+        '\u0441': 'c', '\u0421': 'C',
+        '\u0435': 'e', '\u0415': 'E',
+        '\u0456': 'i', '\u0406': 'I',
+        '\u0458': 'j', '\u0408': 'J',
+        '\u043e': 'o', '\u041e': 'O',
+        '\u0440': 'p', '\u0420': 'P',
+        '\u0455': 's', '\u0405': 'S',
+        '\u0445': 'x', '\u0425': 'X',
+        '\u0443': 'y', '\u0423': 'Y',
+        '\u0501': 'd', '\u0432': 'b',
+        '\u04bb': 'h', '\u043f': 'n',
+        # Greek confusables
+        '\u03bf': 'o', '\u039f': 'O',
+        '\u03b1': 'a', '\u0391': 'A',
+        '\u03b5': 'e', '\u0395': 'E',
+        '\u03b9': 'i', '\u0399': 'I',
+        '\u03c1': 'p', '\u03a1': 'P',
+    })
 
     @classmethod
     def detect_prompt_injection(cls, text: str) -> bool:
-        if not text:
+        if not text or not isinstance(text, str):
             return False
-        return any(pattern.search(text) for pattern in cls.INJECTION_PATTERNS)
+        # 1. Unicode NFKC normalization and cross-script homoglyph translation
+        normalized = unicodedata.normalize("NFKC", text).translate(cls.HOMOGLYPH_MAP)
+        # 2. Strip zero-width and invisible control characters used for regex evasion
+        cleaned = re.sub(r"[\u200B-\u200D\uFEFF\u00AD]", "", normalized)
+        # 3. Match against adversarial injection patterns
+        return any(pattern.search(cleaned) is not None for pattern in cls.INJECTION_PATTERNS)
 
     @classmethod
     def sanitize_prompt_input(cls, text: str, max_length: int = 1500) -> str:
-        if not text:
+        if not text or not isinstance(text, str):
             return ""
-        # 1. Truncate length
-        cleaned = text[:max_length]
-        # 2. Strip special instruction delimiters
-        cleaned = re.sub(r"(?i)(\[INST\]|\[/INST\]|<\|im_start\|>|<\|im_end\|>)", "", cleaned)
-        # 3. Strip raw control characters
+        # 1. Unicode NFKC normalization and cross-script homoglyph translation
+        cleaned = unicodedata.normalize("NFKC", text).translate(cls.HOMOGLYPH_MAP)
+        # 2. Strip zero-width and invisible characters
+        cleaned = re.sub(r"[\u200B-\u200D\uFEFF\u00AD]", "", cleaned)
+        # 3. Neutralize modern LLM delimiters (multi-pass to handle nested injection)
+        for _ in range(3):
+            prev = cleaned
+            cleaned = cls.DELIMITER_REGEX.sub("", cleaned)
+            if cleaned == prev:
+                break
+        # 4. Truncate length
+        cleaned = cleaned[:max_length]
+        # 5. Strip raw control characters while preserving valid whitespace
         cleaned = "".join(ch for ch in cleaned if ch.isprintable() or ch in "\n\r\t")
         return cleaned.strip()
 
@@ -154,9 +226,16 @@ class ONNXNLIEngine:
         Runs neural entailment evaluation between authentic premise and tailored hypothesis.
         Returns: {"entailment": float, "contradiction": float, "neutral": float}
         """
+        p_clean = (premise or "").strip()
+        h_clean = (hypothesis or "").strip()
+
+        # Enforce identity entailment: identical strings are factually entailed
+        if p_clean == h_clean:
+            return {"entailment": 1.0, "contradiction": 0.0, "neutral": 0.0}
+
         if self.session:
             try:
-                model_inputs = self.tokenize_premise_hypothesis(premise, hypothesis)
+                model_inputs = self.tokenize_premise_hypothesis(p_clean, h_clean)
                 inputs = {inp.name: model_inputs.get(inp.name, np.ones((1, 128), dtype=np.int64)) for inp in self.session.get_inputs()}
                 outputs = self.session.run(None, inputs)
                 logits = outputs[0][0]
@@ -170,23 +249,14 @@ class ONNXNLIEngine:
             except Exception as exc:
                 logger.warning(f"ONNX inference failed: {exc}")
 
-        # Real Dense Vector Semantic Entailment Engine
-        vec_premise = EmbeddingService.embed_text(premise)
-        vec_hypothesis = EmbeddingService.embed_text(hypothesis)
-        sim = EmbeddingService.compute_cosine_similarity(vec_premise, vec_hypothesis)
+        # Strict Fail-Safe Default Invariant (M1.6 / M5):
+        # Whenever ONNX model weights are missing or session initialization fails,
+        # eradicate word-overlap fallback and return strict contradiction.
+        return {"contradiction": 1.0, "entailment": 0.0, "neutral": 0.0}
 
-        p_words = set(re.findall(r"\w+", premise.lower()))
-        h_words = set(re.findall(r"\w+", hypothesis.lower()))
-        overlap_recall = len(h_words & p_words) / max(1, len(h_words))
-        effective_sim = max(sim, overlap_recall)
-
-        if effective_sim >= 0.60:
-            entail = min(0.98, max(0.91, effective_sim + 0.10))
-            return {"entailment": entail, "contradiction": round(1.0 - entail, 2), "neutral": 0.02}
-        elif effective_sim >= 0.40:
-            return {"entailment": 0.70, "contradiction": 0.10, "neutral": 0.20}
-        else:
-            return {"entailment": 0.20, "contradiction": 0.75, "neutral": 0.05}
+    def verify_bullet_factuality(self, premise: str, hypothesis: str) -> Dict[str, float]:
+        """Interface contract alias for predict_nli."""
+        return self.predict_nli(premise, hypothesis)
 
 
 class RobustGuardrailVerifier:
@@ -199,8 +269,10 @@ class RobustGuardrailVerifier:
         self.master = master_profile
         if nli_client is not None:
             self.nli_client = nli_client
-        else:
+        elif onnx_nli_path is not None:
             self.nli_client = ONNXNLIEngine(model_path=onnx_nli_path)
+        else:
+            self.nli_client = None
 
         # 1. Build normalized canonical skill lookup
         self.master_skills: Set[str] = set()
@@ -217,11 +289,24 @@ class RobustGuardrailVerifier:
             if exp.get("company")
         }
 
-        # 3. Build bullet ID index
+        # 3. Build bullet ID index (handling dict and str bullet shapes gracefully)
         self.master_bullets_index: Dict[str, Dict[str, Any]] = {}
-        for exp in master_profile.get("experience", []):
-            for b in exp.get("bullets", []):
-                self.master_bullets_index[b["id"]] = b
+        for idx_e, exp in enumerate(master_profile.get("experience", [])):
+            for idx_b, b in enumerate(exp.get("bullets", [])):
+                if isinstance(b, dict):
+                    b_id = b.get("id") or f"b_{idx_e+1}_{idx_b+1}"
+                    self.master_bullets_index[b_id] = b
+                elif isinstance(b, str):
+                    b_id = f"b_{idx_e+1}_{idx_b+1}"
+                    self.master_bullets_index[b_id] = {"id": b_id, "text": b}
+        for idx_p, proj in enumerate(master_profile.get("projects", [])):
+            for idx_b, b in enumerate(proj.get("bullets", [])):
+                if isinstance(b, dict):
+                    b_id = b.get("id") or f"p_{idx_p+1}_{idx_b+1}"
+                    self.master_bullets_index[b_id] = b
+                elif isinstance(b, str):
+                    b_id = f"p_{idx_p+1}_{idx_b+1}"
+                    self.master_bullets_index[b_id] = {"id": b_id, "text": b}
 
     def execute_all_layers(self, draft: TailoredResumeDraft) -> None:
         """
@@ -232,6 +317,14 @@ class RobustGuardrailVerifier:
         self._layer_2_deterministic_subset_check(draft)
         self._layer_4_metric_integrity_check(draft)
         self._layer_3_nli_entailment_check(draft)
+
+    def verify_bullet_factuality(self, premise: str, hypothesis: str) -> Dict[str, float]:
+        """Evaluates factual entailment between premise and hypothesis using configured NLI engine."""
+        if self.nli_client:
+            return self.nli_client.predict_nli(premise, hypothesis)
+        if (premise or "").strip() == (hypothesis or "").strip():
+            return {"entailment": 1.0, "contradiction": 0.0, "neutral": 0.0}
+        return {"contradiction": 1.0, "entailment": 0.0, "neutral": 0.0}
 
     def _layer_1_schema_check(self, draft: TailoredResumeDraft) -> None:
         """Layer 1: Structural boundaries, skill volume, and layout constraints."""
@@ -413,3 +506,7 @@ class RobustGuardrailVerifier:
                 pass
 
         return normalized_tokens
+
+
+# Interface Contract Alias
+GuardrailVerifier = RobustGuardrailVerifier
