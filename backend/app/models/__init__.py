@@ -5,6 +5,7 @@ from app.models.application import Application, ApplicationHistory
 from app.models.outreach import OutreachEmail
 from app.models.token import RefreshToken, UsageTracking
 from app.models.resume_version import ResumeVersion
+from app.models.resume_variant import ResumeVariant, MasterBullet, ResumeVariantBullet
 from app.models.telemetry import SelectorDriftEvent
 
 __all__ = [
@@ -17,5 +18,9 @@ __all__ = [
     "RefreshToken",
     "UsageTracking",
     "ResumeVersion",
+    "ResumeVariant",
+    "MasterBullet",
+    "ResumeVariantBullet",
     "SelectorDriftEvent",
 ]
+

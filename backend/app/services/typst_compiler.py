@@ -52,23 +52,78 @@ class TypstCompilerService:
         src += f'  font_size: {font_size}pt,\n'
         src += f'  text_spacing: {text_spacing},\n'
 
-        # Section Order preservation from base resume
-        section_order = profile.get("section_order")
-        if not section_order:
-            candidates = []
-            if tailored_draft.get("summary") or profile.get("summary"):
-                candidates.append("summary")
-            if tailored_draft.get("skills") or profile.get("skills"):
-                candidates.append("skills")
-            if tailored_draft.get("experience") or profile.get("experience"):
-                candidates.append("experience")
-            if profile.get("projects"):
-                candidates.append("projects")
-            if profile.get("education"):
-                candidates.append("education")
-            section_order = candidates or ["skills", "experience", "education"]
+        # Standardize and preserve candidate section ordering
+        raw_order = profile.get("section_order") or []
+        if isinstance(raw_order, str):
+            raw_order = [raw_order]
 
-        sec_order_items = [f'"{self.escape_typst(s)}"' for s in section_order]
+        SECTION_SYNONYMS = {
+            "summary": "summary",
+            "professional summary": "summary",
+            "executive summary": "summary",
+            "profile": "summary",
+            "about me": "summary",
+            "bio": "summary",
+            "objective": "summary",
+            "career objective": "summary",
+            "skills": "skills",
+            "technical skills": "skills",
+            "core competencies": "skills",
+            "technologies": "skills",
+            "tech stack": "skills",
+            "key skills": "skills",
+            "experience": "experience",
+            "work experience": "experience",
+            "professional experience": "experience",
+            "employment": "experience",
+            "employment history": "experience",
+            "work history": "experience",
+            "projects": "projects",
+            "featured projects": "projects",
+            "technical projects": "projects",
+            "personal projects": "projects",
+            "education": "education",
+            "academics": "education",
+            "academic background": "education",
+            "qualifications": "education",
+        }
+
+        normalized_order = []
+        for s in raw_order:
+            clean_s = str(s).strip().lower()
+            mapped = SECTION_SYNONYMS.get(clean_s, clean_s)
+            if mapped in {"summary", "skills", "experience", "projects", "education"} and mapped not in normalized_order:
+                normalized_order.append(mapped)
+
+        # Ensure all sections that contain data are preserved so nothing is omitted
+        has_summary = bool(tailored_draft.get("summary") or profile.get("summary"))
+        has_skills = bool(tailored_draft.get("skills") or profile.get("skills"))
+        has_exp = bool(tailored_draft.get("experience") or profile.get("experience"))
+        has_proj = bool(tailored_draft.get("projects") or profile.get("projects"))
+        has_edu = bool(tailored_draft.get("education") or profile.get("education"))
+
+        if not normalized_order:
+            candidates = []
+            if has_summary: candidates.append("summary")
+            if has_skills: candidates.append("skills")
+            if has_exp: candidates.append("experience")
+            if has_proj: candidates.append("projects")
+            if has_edu: candidates.append("education")
+            normalized_order = candidates or ["skills", "experience", "education"]
+        else:
+            # Append any sections that contain data but were not in the explicit ordering list
+            if has_summary and "summary" not in normalized_order:
+                normalized_order.insert(0, "summary")
+            if has_skills and "skills" not in normalized_order:
+                normalized_order.append("skills")
+            if has_exp and "experience" not in normalized_order:
+                normalized_order.append("experience")
+            if has_proj and "projects" not in normalized_order:
+                normalized_order.append("projects")
+            if has_edu and "education" not in normalized_order:
+                normalized_order.append("education")
+
+        sec_order_items = [f'"{self.escape_typst(s)}"' for s in normalized_order]
         sec_order_str = ", ".join(sec_order_items) + (", " if len(sec_order_items) == 1 else "")
         src += f'  section_order: ({sec_order_str}),\n'
 
@@ -111,11 +166,18 @@ class TypstCompilerService:
 
         # Featured Projects
         proj_entries = []
-        projects_data = profile.get("projects", [])
+        projects_data = tailored_draft.get("projects") or profile.get("projects", [])
         for proj in projects_data:
-            bullets = [f'"{self.escape_typst(b.get("text", ""))}"' for b in proj.get("bullets", [])]
+            bullets = []
+            for b in proj.get("bullets", []):
+                b_text = b.get("text", "") if isinstance(b, dict) else str(b)
+                if b_text.strip():
+                    bullets.append(f'"{self.escape_typst(b_text)}"')
             bullets_str = ", ".join(bullets) + (", " if bullets else "")
-            dates_val = f'{proj.get("start_date", "2024")} – {proj.get("end_date", "Present")}' if proj.get("start_date") or proj.get("end_date") else "2024 – Present"
+            dates_val = (
+                proj.get("dates")
+                or (f'{proj.get("start_date", "2024")} – {proj.get("end_date", "Present")}' if proj.get("start_date") or proj.get("end_date") else "")
+            )
             entry = (
                 f'    (name: "{self.escape_typst(proj.get("name", ""))}", '
                 f'subtitle: "{self.escape_typst(proj.get("subtitle", ""))}", '
@@ -131,10 +193,12 @@ class TypstCompilerService:
 
         # Education
         edu_entries = []
-        for edu in profile.get("education", []):
+        education_data = tailored_draft.get("education") or profile.get("education", [])
+        for edu in education_data:
+            dates_val = edu.get("end_date") or edu.get("dates") or edu.get("year") or ""
             entry = (
                 f'    (institution: "{self.escape_typst(edu.get("institution", ""))}", '
-                f'dates: "{self.escape_typst(edu.get("end_date", ""))}", '
+                f'dates: "{self.escape_typst(dates_val)}", '
                 f'degree: "{self.escape_typst(edu.get("degree", ""))}", '
                 f'field: "{self.escape_typst(edu.get("field", ""))}", '
                 f'gpa: "{self.escape_typst(edu.get("gpa", ""))}")'
@@ -269,8 +333,34 @@ class TypstCompilerService:
                     y += 24
                 y += 6
 
-        # 5. Education
-        edu_list = profile.get("education", [])
+        # 5. Featured Projects
+        projects_list = tailored_draft.get("projects") or profile.get("projects", [])
+        if projects_list:
+            page.insert_text((40, y), "FEATURED PROJECTS", fontsize=10, fontname="helv", color=(0.1, 0.12, 0.2))
+            y += 14
+            for proj in projects_list:
+                name_proj = proj.get("name", "")
+                subtitle = proj.get("subtitle", "")
+                tech = proj.get("technologies", "")
+                dates_proj = proj.get("dates") or (f"{proj.get('start_date', '')} - {proj.get('end_date', '')}".strip(" - "))
+                title_line = f"{name_proj}" + (f" – {subtitle}" if subtitle else "")
+                page.insert_text((40, y), title_line, fontsize=9.5, fontname="helv", color=(0.05, 0.05, 0.1))
+                if dates_proj:
+                    page.insert_text((460, y), dates_proj, fontsize=8.5, fontname="helv", color=(0.3, 0.3, 0.3))
+                y += 12
+                if tech:
+                    page.insert_text((40, y), tech, fontsize=8, fontname="helv", color=(0.35, 0.4, 0.45))
+                    y += 11
+                for bullet in proj.get("bullets", []):
+                    b_text = bullet.get("text", "") if isinstance(bullet, dict) else str(bullet)
+                    bullet_rect = fitz.Rect(52, y - 2, 572, y + 22)
+                    page.insert_text((42, y + 6), "•", fontsize=10, fontname="helv", color=(0.2, 0.2, 0.7))
+                    page.insert_textbox(bullet_rect, b_text, fontsize=8.5, fontname="helv", color=(0.1, 0.1, 0.1))
+                    y += 22
+                y += 4
+
+        # 6. Education
+        edu_list = tailored_draft.get("education") or profile.get("education", [])
         if edu_list:
             page.insert_text((40, y), "EDUCATION", fontsize=10, fontname="helv", color=(0.1, 0.12, 0.2))
             y += 14
@@ -278,7 +368,7 @@ class TypstCompilerService:
                 inst = edu.get("institution", "")
                 deg = edu.get("degree", "")
                 field = edu.get("field", "")
-                dates = edu.get("end_date", "")
+                dates = edu.get("end_date") or edu.get("dates") or edu.get("year") or ""
                 gpa = edu.get("gpa", "")
 
                 page.insert_text((40, y), f"{inst}", fontsize=9, fontname="helv", color=(0.05, 0.05, 0.1))

@@ -109,13 +109,17 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
       const res = await fetchWithAuth(`${apiBaseUrl}/resume/versions`);
       if (res.ok) {
         const data = await res.json();
-        setVersions(data.versions || []);
+        const list = Array.isArray(data?.versions) ? data.versions : (Array.isArray(data) ? data : []);
+        setVersions(list);
       }
     } catch {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
         chrome.storage.local.get('rolesync_resume_versions', (r) => {
           if (r.rolesync_resume_versions) {
-            setVersions(r.rolesync_resume_versions);
+            const list = Array.isArray(r.rolesync_resume_versions)
+              ? r.rolesync_resume_versions
+              : (Array.isArray(r.rolesync_resume_versions.versions) ? r.rolesync_resume_versions.versions : []);
+            setVersions(list);
           }
         });
       }
@@ -219,10 +223,10 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          job_description: currentJd.rawText,
-          target_role: currentJd.jobTitle,
-          company_name: currentJd.companyName,
-          resume: activeProf,
+          job_description: currentJd?.rawText || '',
+          target_role: currentJd?.jobTitle || 'Software Engineer',
+          company_name: currentJd?.companyName || 'Target Company',
+          resume: activeProf || {},
         }),
       });
 
@@ -232,18 +236,20 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
 
         // "Honest Candidate" default: missing skills start UNCHECKED (false)
         const initSkills: Record<string, boolean> = {};
-        data.missing_skills.forEach((s) => (initSkills[s.name] = false));
+        (data.missing_skills || []).forEach((s) => (initSkills[s.name] = false));
         setAcceptedSkills(initSkills);
 
         // "Honest Candidate" default: bullet suggestions start UNCHECKED (false)
         const initBullets: Record<string, boolean> = {};
-        data.bullet_suggestions.forEach((b) => (initBullets[b.original_id] = false));
+        (data.bullet_suggestions || []).forEach((b) => (initBullets[b.original_id] = false));
         setAcceptedBullets(initBullets);
 
         setAcceptSummary(true);
-        setVersionNameInput(`Enhanced for ${currentJd.companyName} (${currentJd.jobTitle})`);
+        setVersionNameInput(`Enhanced for ${currentJd?.companyName || 'Role'} (${currentJd?.jobTitle || 'Target'})`);
         setStage(2);
       } else {
+        const errDetail = await res.text().catch(() => '');
+        console.warn(`[RoleSync UI] Match error ${res.status}:`, errDetail);
         if (onToast) onToast('error', 'Failed to match resume against job description.', 'Analysis Failed');
       }
     } catch (err) {
@@ -403,7 +409,7 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
               className="w-full p-2 border border-slate-300 rounded-lg text-xs bg-slate-50 font-medium text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500"
             >
               <option value="base">📄 Master Career Vault Resume (Default Base)</option>
-              {versions.map((v) => (
+              {(Array.isArray(versions) ? versions : []).map((v) => (
                 <option key={v.id} value={v.id}>
                   📑 {v.name} ({Math.round(v.ats_score)}% Score)
                 </option>
@@ -533,7 +539,7 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
           ) : (
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col gap-3.5">
               {/* 1. Missing Skills Suggestions */}
-              {matchAnalysis.missing_skills.length > 0 && (
+              {(matchAnalysis.missing_skills || []).length > 0 && (
                 <div className="flex flex-col gap-2">
                   <div className="p-2 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-600 flex items-start gap-1.5">
                     <span className="text-emerald-600 font-bold">🛡️</span>
@@ -544,14 +550,14 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
 
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800 text-[11px] uppercase tracking-wide">
-                      Suggested Skill Additions ({matchAnalysis.missing_skills.length})
+                      Suggested Skill Additions ({(matchAnalysis.missing_skills || []).length})
                     </span>
                     <button
                       type="button"
                       onClick={() => {
                         const allChecked = Object.values(acceptedSkills).every(Boolean);
                         const updated: Record<string, boolean> = {};
-                        matchAnalysis.missing_skills.forEach((s) => (updated[s.name] = !allChecked));
+                        (matchAnalysis.missing_skills || []).forEach((s) => (updated[s.name] = !allChecked));
                         setAcceptedSkills(updated);
                       }}
                       className="text-[10px] text-indigo-600 hover:underline font-semibold cursor-pointer"
@@ -561,7 +567,7 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
                   </div>
 
                   <div className="grid grid-cols-2 gap-1.5">
-                    {matchAnalysis.missing_skills.map((skill, idx) => (
+                    {(matchAnalysis.missing_skills || []).map((skill, idx) => (
                       <label
                         key={idx}
                         className={`p-2 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${
@@ -591,14 +597,14 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
               )}
 
               {/* 2. Suggested Bullet Point Improvements */}
-              {matchAnalysis.bullet_suggestions.length > 0 && (
+              {(matchAnalysis.bullet_suggestions || []).length > 0 && (
                 <div className="flex flex-col gap-2 pt-2 border-t border-slate-200">
                   <span className="font-bold text-slate-800 text-[11px] uppercase tracking-wide">
                     Suggested Bullet Improvements (Zero-Hallucination)
                   </span>
 
                   <div className="flex flex-col gap-2">
-                    {matchAnalysis.bullet_suggestions.map((bullet, idx) => (
+                    {(matchAnalysis.bullet_suggestions || []).map((bullet, idx) => (
                       <div
                         key={idx}
                         className={`p-2.5 rounded-lg border transition-colors flex flex-col gap-1.5 ${
@@ -635,9 +641,9 @@ export const ResumeMatcher: React.FC<ResumeMatcherProps> = ({
                           {bullet.suggested_text}
                         </div>
 
-                        {bullet.keywords_added?.length > 0 && (
+                        {(bullet.keywords_added || []).length > 0 && (
                           <div className="flex flex-wrap gap-1 pt-0.5">
-                            {bullet.keywords_added.map((kw, kIdx) => (
+                            {(bullet.keywords_added || []).map((kw, kIdx) => (
                               <span
                                 key={kIdx}
                                 className="text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded font-semibold border border-emerald-200"

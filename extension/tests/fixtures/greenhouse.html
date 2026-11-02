@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stripe Careers - Senior Full-Stack Engineer</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 2rem; background: #fdfdfe; color: #1e293b; }
+    .container { max-width: 800px; margin: 0 auto; background: white; padding: 32px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .company-name { font-weight: 700; color: #6366f1; font-size: 14px; text-transform: uppercase; }
+    .app-title { font-size: 28px; margin: 8px 0 20px 0; }
+    .field { margin-bottom: 20px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+    input[type="text"], input[type="email"], input[type="tel"], textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+    textarea { min-height: 120px; resize: vertical; }
+    .btn-submit { background: #6366f1; color: white; border: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 15px; cursor: pointer; }
+    .btn-submit:hover { background: #4f46e5; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Greenhouse Job Header & Description -->
+    <div id="content">
+      <div class="company-name">Stripe</div>
+      <h1 class="app-title">Senior Full-Stack Engineer</h1>
+      <div class="job-post">
+        <p>Stripe is building economic infrastructure for the internet. As a Senior Full-Stack Engineer on the Global Payments and Connect teams, you will architect mission-critical customer-facing interfaces and high-scale distributed backend services.</p>
+        <h3>Responsibilities:</h3>
+        <ul>
+          <li>Build intuitive, ultra-reliable payment checkout experiences using React, TypeScript, and modern frontend architectures.</li>
+          <li>Design and scale low-latency backend microservices handling millions of API transactions per minute with Node.js, Go, and PostgreSQL.</li>
+          <li>Collaborate closely with Product and Security teams to ensure flawless transaction integrity and PCI compliance.</li>
+        </ul>
+        <h3>Requirements:</h3>
+        <ul>
+          <li>5+ years of production experience in full-stack web applications with React, TypeScript, and Node.js.</li>
+          <li>Deep expertise with relational databases (PostgreSQL), distributed caching (Redis), and REST / GraphQL APIs.</li>
+          <li>Experience with test-driven development, automated CI/CD pipelines, and high availability system design.</li>
+        </ul>
+      </div>
+    </div>
+
+    <hr style="margin: 32px 0; border: none; border-top: 1px solid #e2e8f0;" />
+
+    <!-- Greenhouse Application Form -->
+    <h2>Apply for this Job</h2>
+    <form id="application_form" method="POST" action="/submit">
+      <div class="field">
+        <label for="first_name">First Name <span style="color: red;">*</span></label>
+        <input type="text" id="first_name" name="job_application[first_name]" autocomplete="given-name" required />
+      </div>
+
+      <div class="field">
+        <label for="last_name">Last Name <span style="color: red;">*</span></label>
+        <input type="text" id="last_name" name="job_application[last_name]" autocomplete="family-name" required />
+      </div>
+
+      <div class="field">
+        <label for="email">Email <span style="color: red;">*</span></label>
+        <input type="email" id="email" name="job_application[email]" autocomplete="email" required />
+      </div>
+
+      <div class="field">
+        <label for="phone">Phone <span style="color: red;">*</span></label>
+        <input type="tel" id="phone" name="job_application[phone]" autocomplete="tel" required />
+      </div>
+
+      <div class="field">
+        <label for="location">Location (City, State) <span style="color: red;">*</span></label>
+        <input type="text" id="location" name="job_application[location]" placeholder="e.g. San Francisco, CA" required />
+      </div>
+
+      <div class="field">
+        <label for="resume">Resume / CV <span style="color: red;">*</span></label>
+        <input type="file" id="resume" name="resume" required />
+      </div>
+
+      <div class="field">
+        <label for="job_application_answers_attributes_0_text_value">LinkedIn Profile URL</label>
+        <input type="text" id="job_application_answers_attributes_0_text_value" name="job_application[answers_attributes][0][text_value]" placeholder="https://linkedin.com/in/username" />
+      </div>
+
+      <div class="field">
+        <label for="job_application_answers_attributes_1_text_value">Website / Portfolio URL</label>
+        <input type="text" id="job_application_answers_attributes_1_text_value" name="job_application[answers_attributes][1][text_value]" placeholder="https://github.com/username" />
+      </div>
+
+      <div class="field">
+        <label for="cover_letter_text">Cover Letter / Note to Hiring Manager</label>
+        <textarea id="cover_letter_text" name="job_application[cover_letter_text]" placeholder="Introduce yourself and explain why you're a great fit..."></textarea>
+      </div>
+
+      <div style="margin-top: 24px;">
+        <input type="submit" id="submit_app" class="btn-submit" value="Submit Application" />
+      </div>
+    </form>
+  </div>
+</body>
+</html>

@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.redis_client import redis_service
 from app.services.taxonomy import taxonomy_service
 from app.services.guardrails import (
+    ONNXNLIEngine,
     RobustGuardrailVerifier,
     TailoredResumeDraft,
     TailoredExperienceEntry,
@@ -159,30 +160,29 @@ class TailorPipelineOrchestrator:
 
             # 2. Candidate skills & experience normalization
             if not master_profile.get("experience"):
-                master_profile["experience"] = [
-                    {
-                        "company": "Apex Systems",
-                        "role": "Senior Software Engineer",
-                        "start_date": "2021",
-                        "end_date": "Present",
-                        "location": "San Francisco, CA",
-                        "bullets": [
-                            {
-                                "id": "b_apex_1",
-                                "text": "Refactored payment gateway microservice, reducing response latency by 1.5s and saving $1,500,000 annually across 10x traffic volume."
-                            }
-                        ]
-                    }
-                ]
+                raise ValueError("Candidate master profile contains no experience records.")
 
             for i, exp in enumerate(master_profile.get("experience", [])):
-                if not exp.get("bullets"):
-                    exp["bullets"] = [
-                        {
-                            "id": f"b_{i+1}_1",
-                            "text": f"Engineered scalable systems and cloud infrastructure at {exp.get('company', 'Tech Organization')}."
-                        }
-                    ]
+                normalized_bullets = []
+                for j, b in enumerate(exp.get("bullets", [])):
+                    if isinstance(b, dict):
+                        if not b.get("id"):
+                            b["id"] = f"b_{i+1}_{j+1}"
+                        normalized_bullets.append(b)
+                    elif isinstance(b, str):
+                        normalized_bullets.append({"id": f"b_{i+1}_{j+1}", "text": b})
+                exp["bullets"] = normalized_bullets
+
+            for i, proj in enumerate(master_profile.get("projects", [])):
+                normalized_bullets = []
+                for j, b in enumerate(proj.get("bullets", [])):
+                    if isinstance(b, dict):
+                        if not b.get("id"):
+                            b["id"] = f"p_{i+1}_{j+1}"
+                        normalized_bullets.append(b)
+                    elif isinstance(b, str):
+                        normalized_bullets.append({"id": f"p_{i+1}_{j+1}", "text": b})
+                proj["bullets"] = normalized_bullets
 
             master_skills_raw = master_profile.get("skills", [])
             master_skill_names = [
@@ -190,7 +190,7 @@ class TailorPipelineOrchestrator:
                 for s in master_skills_raw
             ]
 
-            # Prioritize skills that intersect with JD requirements
+            # Prioritize skills that intersect with JD requirements, preserving authentic skills
             matching_skills = [
                 s for s in master_skill_names
                 if taxonomy_service.normalize_skill(s) in jd_skills
@@ -200,34 +200,20 @@ class TailorPipelineOrchestrator:
                 if taxonomy_service.normalize_skill(s) not in jd_skills
             ]
             tailored_skill_list = matching_skills + other_skills
+            if len(tailored_skill_list) > 40:
+                tailored_skill_list = tailored_skill_list[:40]
 
-            # 3. Construct Tailored Experience Entries with Semantic Ranking & Self-Correction Loop
+            # Preserve candidate's authentic summary or target gracefully without erasing identity
+            orig_summary = (master_profile.get("summary") or "").strip()
+            if orig_summary:
+                tailored_summary = orig_summary
+            else:
+                tailored_summary = f"Accomplished {target_role} specializing in scalable architecture, distributed systems, and high-performance engineering."
+
+            # 3. Construct Tailored Experience Entries preserving authentic chronological timeline
             jd_vec = EmbeddingService.embed_text(raw_jd)
             raw_experiences = master_profile.get("experience", [])
-
-            # Semantic relevance lookup via Qdrant Vector Engine with tenant-isolation filter
-            relevant_vector_bullets = qdrant_service.search_relevant_experiences_sync(
-                user_id=str(user_id),
-                query_vector=jd_vec.tolist(),
-                limit=10
-            )
-            relevant_bullet_ids = {hit["payload"].get("bullet_id") for hit in relevant_vector_bullets if hit.get("payload")}
-
-            # Rank experiences by semantic relevance to JD while keeping overall chronological coherence
-            if len(raw_experiences) > 1:
-                def experience_relevance(exp: Dict[str, Any]) -> float:
-                    # Boost roles containing top vector matches
-                    boost = 0.2 if any(b.get("id") in relevant_bullet_ids for b in exp.get("bullets", [])) else 0.0
-                    text = f"{exp.get('role', '')} {exp.get('company', '')} " + " ".join(
-                        b.get("text", "") for b in exp.get("bullets", [])
-                    )
-                    exp_vec = EmbeddingService.embed_text(text)
-                    return EmbeddingService.compute_cosine_similarity(exp_vec, jd_vec) + boost
-
-                # Prioritize high-relevance roles
-                sorted_experiences = sorted(raw_experiences, key=experience_relevance, reverse=True)
-            else:
-                sorted_experiences = raw_experiences
+            sorted_experiences = raw_experiences
 
             max_retries = 3
             verified_draft = None
@@ -263,35 +249,41 @@ class TailorPipelineOrchestrator:
                                 )
                             )
 
+                        dates_str = f"{exp.get('start_date', '')} - {exp.get('end_date', '')}".strip(" - ") or exp.get("dates") or "Present"
                         tailored_experience.append(
                             TailoredExperienceEntry(
                                 company=exp.get("company", ""),
                                 role=exp.get("role", ""),
-                                dates=f"{exp.get('start_date', '')} - {exp.get('end_date', '')}",
+                                dates=dates_str,
                                 location=exp.get("location", "Remote / Onsite"),
                                 bullet_points=tailored_bullets
                             )
                         )
 
                     draft = TailoredResumeDraft(
-                        skills=tailored_skill_list[:25],
-                        summary=f"Experienced {target_role} specializing in scalable architecture and high-performance engineering.",
-                        experience=tailored_experience
+                        skills=tailored_skill_list,
+                        summary=tailored_summary,
+                        experience=tailored_experience,
+                        projects=master_profile.get("projects", []),
+                        education=master_profile.get("education", []),
+                        personal=master_profile.get("personal") or master_profile.get("personal_info"),
+                        section_order=master_profile.get("section_order")
                     )
 
                     # 4. Run 4-Layer Guardrail
-                    verifier = RobustGuardrailVerifier(master_profile)
+                    verifier = RobustGuardrailVerifier(master_profile, nli_client=ONNXNLIEngine())
                     verifier.execute_all_layers(draft)
                     verified_draft = draft
                     break  # Guardrails passed successfully
 
                 except GuardrailViolationException as gve:
                     logger.warning(f"[Tailor Task {task_id}] Guardrail violation on attempt {attempt}: {gve}")
-                    if attempt == max_retries:
-                        if gve.layer == "LAYER_3_NLI":
+                    if gve.layer == "LAYER_3_NLI":
+                        contra_score = (gve.details or {}).get("contradiction_score", 0.0)
+                        if contra_score >= 0.50 or attempt == max_retries:
                             logger.info(
-                                f"[Tailor Task {task_id}] Degrading Layer 3 NLI violation on attempt {attempt}: "
-                                f"reverting offending bullets to master originals."
+                                f"[Tailor Task {task_id}] Graceful reversion for Layer 3 NLI violation on attempt {attempt} "
+                                f"(contradiction_score: {contra_score}): reverting offending bullets to master originals."
                             )
                             target_bullet_id = gve.details.get("bullet_id") if gve.details else None
                             for exp in draft.experience:
@@ -307,7 +299,7 @@ class TailorPipelineOrchestrator:
                                         scores = verifier.nli_client.predict_nli(premise=master_orig, hypothesis=bullet.tailored_text)
                                         contradiction = scores.get("contradiction", 0.0)
                                         entailment = scores.get("entailment", 1.0)
-                                        if contradiction > 0.15 or entailment < 0.88:
+                                        if contradiction >= 0.50 or contradiction > 0.15 or entailment < 0.88:
                                             is_offending = True
 
                                     if is_offending and master_orig:
@@ -319,8 +311,8 @@ class TailorPipelineOrchestrator:
                             verifier.execute_all_layers(draft)
                             verified_draft = draft
                             break
-                        else:
-                            raise gve
+                    elif attempt == max_retries:
+                        raise gve
 
             if not verified_draft:
                 raise RuntimeError("Failed to verify tailored draft against guardrails after max retries.")

@@ -22,6 +22,16 @@ export const CHAT_WIDGET_SELECTORS: string[] = [
   '#tawk-bubble-container',
 ];
 
+export const MODAL_CONTAINER_SELECTORS: string[] = [
+  '[aria-modal="true"]',
+  '[role="dialog"]',
+  'dialog[open]',
+  '.jobs-easy-apply-modal',
+  'div.artdeco-modal',
+  '[data-automation-id="workday-modal"]',
+  '.workday-popup',
+];
+
 export class CopilotCapsule {
   private hostElement: HTMLDivElement | null = null;
   private shadowRoot: ShadowRoot | null = null;
@@ -40,7 +50,9 @@ export class CopilotCapsule {
   private hasMovedSignificantly: boolean = false;
   private observer: MutationObserver | null = null;
   private resizeListener: (() => void) | null = null;
+  private scrollListener: (() => void) | null = null;
   private intervalCheckTimers: number[] = [];
+  private isModalDocked: boolean = false;
 
   constructor() {
     this.init();
@@ -80,12 +92,71 @@ export class CopilotCapsule {
   }
 
   /**
-   * Collision avoidance: detect if any known third-party support/chat widget
-   * is visible in the bottom-right viewport quadrant. If so, automatically
-   * shift the capsule to bottom-left unless custom positioned by candidate.
+   * Find any active modal container in the host DOM.
+   * Matches aria-modal dialogs, HTML5 open dialogs, LinkedIn Easy Apply,
+   * Workday modal dialogs, and related application overlays.
+   */
+  public findActiveModalContainer(): HTMLElement | null {
+    for (const selector of MODAL_CONTAINER_SELECTORS) {
+      try {
+        const elements = document.querySelectorAll<HTMLElement>(selector);
+        for (const el of elements) {
+          if (el.id === 'rolesync-capsule-host' || el.closest('#rolesync-capsule-host')) {
+            continue;
+          }
+          const rect = el.getBoundingClientRect();
+          if (
+            rect.width > 200 &&
+            rect.height > 200 &&
+            rect.bottom > 0 &&
+            rect.right > 0 &&
+            window.getComputedStyle(el).display !== 'none' &&
+            window.getComputedStyle(el).visibility !== 'hidden'
+          ) {
+            return el;
+          }
+        }
+      } catch {
+        // Skip invalid selector or querying error
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Collision avoidance & dynamic modal stacking elevation:
+   * 1. Detect if an active modal container exists in the host DOM.
+   *    If so, elevate stacking/z-index above modal backdrop and dock
+   *    the capsule adjacent to the modal header/margins.
+   * 2. Otherwise, detect if any known third-party support/chat widget
+   *    is visible in the bottom-right viewport quadrant. If so, automatically
+   *    shift the capsule to bottom-left unless custom positioned by candidate.
    */
   public evaluateCollision(): void {
-    if (this.isCustomPositioned || !this.hostElement) return;
+    if (!this.hostElement) return;
+
+    // Dynamic modal stacking elevation & docking (elevates even if custom positioned)
+    const activeModal = this.findActiveModalContainer();
+    if (activeModal) {
+      const modalRect = activeModal.getBoundingClientRect();
+      this.hostElement.style.zIndex = '2147483647';
+      this.hostElement.style.top = `${Math.max(12, Math.round(modalRect.top + 8))}px`;
+      this.hostElement.style.right = `${Math.max(12, Math.round(window.innerWidth - modalRect.right + 12))}px`;
+      this.hostElement.style.bottom = 'auto';
+      this.hostElement.style.left = 'auto';
+      this.isModalDocked = true;
+      return;
+    }
+
+    if (this.isModalDocked) {
+      this.isModalDocked = false;
+      if (this.isCustomPositioned) {
+        this.restorePosition();
+        return;
+      }
+    }
+
+    if (this.isCustomPositioned) return;
 
     let collided = false;
     for (const sel of CHAT_WIDGET_SELECTORS) {
@@ -126,14 +197,22 @@ export class CopilotCapsule {
 
   private setupCollisionObserver(): void {
     try {
-      this.observer = new MutationObserver(() => {
-        if (!this.isCustomPositioned) {
+      this.observer = new MutationObserver((mutations) => {
+        const hasExternalMutation = mutations.some(
+          (m) => m.target !== this.hostElement && !(this.hostElement && this.hostElement.contains(m.target as Node))
+        );
+        if (hasExternalMutation) {
           this.evaluateCollision();
         }
       });
 
       if (document.body) {
-        this.observer.observe(document.body, { childList: true, subtree: true });
+        this.observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['open', 'aria-modal', 'class', 'style', 'hidden'],
+        });
       }
 
       // Interval checks for late-mounting widgets (1000ms, 2500ms, 5000ms)
@@ -144,11 +223,14 @@ export class CopilotCapsule {
       );
 
       this.resizeListener = () => {
-        if (!this.isCustomPositioned) {
-          this.evaluateCollision();
-        }
+        this.evaluateCollision();
       };
       window.addEventListener('resize', this.resizeListener, { passive: true });
+
+      this.scrollListener = () => {
+        this.evaluateCollision();
+      };
+      window.addEventListener('scroll', this.scrollListener, { capture: true, passive: true });
     } catch (err) {
       console.debug('[RoleSync] Failed to setup collision observer:', err);
     }
@@ -285,7 +367,12 @@ export class CopilotCapsule {
 
     const html = `
       <style>
+        :host {
+          all: initial !important;
+          contain: content;
+        }
         .capsule-container {
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           background: #ffffff;
           border: 1px solid #e2e8f0;
           box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
@@ -380,6 +467,7 @@ export class CopilotCapsule {
           background: #e2e8f0;
         }
         .minimized-pill {
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           display: flex;
           align-items: center;
           gap: 6px;
@@ -494,6 +582,10 @@ export class CopilotCapsule {
     if (this.resizeListener) {
       window.removeEventListener('resize', this.resizeListener);
       this.resizeListener = null;
+    }
+    if (this.scrollListener) {
+      window.removeEventListener('scroll', this.scrollListener);
+      this.scrollListener = null;
     }
     this.intervalCheckTimers.forEach((timer) => clearTimeout(timer));
     this.intervalCheckTimers = [];

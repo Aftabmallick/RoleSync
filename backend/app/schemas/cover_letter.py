@@ -6,7 +6,7 @@ class CoverLetterRequest(BaseModel):
     target_role: str = Field(..., description="Target role name (e.g. Senior Backend Engineer)")
     company_name: str = Field(..., description="Target company name (e.g. Stripe)")
     raw_job_description: str = Field(..., description="Full text of the job posting")
-    candidate_name: Optional[str] = Field("Alex Mercer", description="Candidate full name")
+    candidate_name: Optional[str] = Field(None, description="Candidate full name")
     candidate_summary: Optional[str] = Field("", description="Candidate summary or bio")
     master_profile: Optional[Dict[str, Any]] = Field(None, description="Full Master Profile data")
     tone: Optional[str] = Field("professional", description="Tone: professional, confident, enthusiastic")

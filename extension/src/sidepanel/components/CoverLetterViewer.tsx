@@ -161,12 +161,12 @@ export const CoverLetterViewer: React.FC<CoverLetterViewerProps> = ({
       {coverLetter && (
         <div className="flex flex-col gap-2.5">
           {/* Matched skills pill strip */}
-          {coverLetter.matched_skills?.length > 0 && (
+          {Array.isArray(coverLetter.matched_skills) && coverLetter.matched_skills.length > 0 && (
             <div className="flex flex-wrap gap-1 p-2 bg-slate-50 rounded-lg border border-slate-200/60">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mr-1 self-center">
                 Skills Highlighted:
               </span>
-              {coverLetter.matched_skills.map((s, idx) => (
+              {(coverLetter.matched_skills || []).map((s, idx) => (
                 <span
                   key={idx}
                   className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.2 rounded font-semibold border border-indigo-100"

@@ -15,14 +15,14 @@ test('Gate 2: Suggested bullets and skills default unchecked', () => {
   // Verify missing_skills default unchecked
   assert.match(
     content,
-    /data\.missing_skills\.forEach\(\(s\)\s*=>\s*\(initSkills\[s\.name\]\s*=\s*false\)\);/,
+    /(?:\(data\.missing_skills\s*\|\|\s*\[\]\)|data\.missing_skills)\.forEach\(\(s\)\s*=>\s*\(initSkills\[s\.name\]\s*=\s*false\)\);/,
     'Missing skills must default to false (unchecked)'
   );
 
   // Verify bullet_suggestions default unchecked
   assert.match(
     content,
-    /data\.bullet_suggestions\.forEach\(\(b\)\s*=>\s*\(initBullets\[b\.original_id\]\s*=\s*false\)\);/,
+    /(?:\(data\.bullet_suggestions\s*\|\|\s*\[\]\)|data\.bullet_suggestions)\.forEach\(\(b\)\s*=>\s*\(initBullets\[b\.original_id\]\s*=\s*false\)\);/,
     'Bullet suggestions must default to false (unchecked)'
   );
 

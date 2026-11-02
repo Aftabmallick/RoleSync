@@ -196,6 +196,7 @@ export default function App() {
             if (cp.activeTab) setActiveTab(cp.activeTab);
             if (cp.wizardStage) setWizardStage(cp.wizardStage);
             else if (cp.tailorResult?.pdfBase64) setWizardStage(3);
+            if (cp.candidateProfile) setMasterProfile((prev) => prev || cp.candidateProfile);
           }
         }).catch(() => {});
 
@@ -253,12 +254,13 @@ export default function App() {
           tailorStage,
           activeTab,
           wizardStage,
+          candidateProfile: masterProfile,
         },
       }).catch((err) => {
         console.warn('[RoleSync UI] Failed to save session checkpoint:', err);
       });
     }
-  }, [tailorResult, isTailoring, tailorStage, activeTab, wizardStage]);
+  }, [tailorResult, isTailoring, tailorStage, activeTab, wizardStage, masterProfile]);
 
   const handleTriggerTailoring = async () => {
     if (!currentJd) return;
@@ -304,10 +306,17 @@ export default function App() {
             if (data.status === 'COMPLETED') {
               completed = true;
               setIsTailoring(false);
+              const fullDraft = {
+                ...(masterProfile || {}),
+                ...(data.tailored_draft || {}),
+                projects: data.tailored_draft?.projects || masterProfile?.projects || [],
+                education: data.tailored_draft?.education || masterProfile?.education || [],
+                personal: data.tailored_draft?.personal || masterProfile?.personal,
+              };
               setTailorResult({
                 score: data.ats_score,
                 pdfBase64: data.pdf_base64,
-                tailored_draft: data.tailored_draft,
+                tailored_draft: fullDraft,
               });
               setWizardStage(3);
               showToast('success', `Tailored single-page resume generated (${data.ats_score?.composite_score || 85}% ATS Score).`, 'Tailoring Complete');
@@ -341,10 +350,17 @@ export default function App() {
               completed = true;
               clearInterval(interval);
               setIsTailoring(false);
+              const fullDraft = {
+                ...(masterProfile || {}),
+                ...(data.tailored_draft || {}),
+                projects: data.tailored_draft?.projects || masterProfile?.projects || [],
+                education: data.tailored_draft?.education || masterProfile?.education || [],
+                personal: data.tailored_draft?.personal || masterProfile?.personal,
+              };
               setTailorResult({
                 score: data.ats_score,
                 pdfBase64: data.pdf_base64,
-                tailored_draft: data.tailored_draft,
+                tailored_draft: fullDraft,
               });
               setWizardStage(3);
               showToast('success', `Tailored single-page resume generated (${data.ats_score?.composite_score || 85}% ATS Score).`, 'Tailoring Complete');
@@ -436,13 +452,21 @@ export default function App() {
     pdfBase64?: string,
     score?: ScoreBreakdown
   ) => {
+    const fullDraft = {
+      ...(masterProfile || {}),
+      ...(profileData || {}),
+      experience: profileData?.experience || masterProfile?.experience,
+      skills: profileData?.skills || masterProfile?.skills,
+      summary: profileData?.summary || masterProfile?.summary,
+      projects: profileData?.projects || masterProfile?.projects || [],
+      education: profileData?.education || masterProfile?.education || [],
+      personal: profileData?.personal || masterProfile?.personal,
+    };
     if (score && pdfBase64) {
       setTailorResult({
         score,
         pdfBase64,
-        tailored_draft: {
-          experience: profileData?.experience || masterProfile?.experience,
-        },
+        tailored_draft: fullDraft,
       });
     } else if (pdfBase64) {
       const fallbackScore: ScoreBreakdown = {
@@ -455,9 +479,7 @@ export default function App() {
       setTailorResult((prev) => ({
         score: prev?.score || fallbackScore,
         pdfBase64,
-        tailored_draft: {
-          experience: profileData?.experience || masterProfile?.experience,
-        },
+        tailored_draft: fullDraft,
       }));
     }
   };

@@ -22,7 +22,7 @@ async def synthesize_cover_letter(
         target_role=payload.target_role,
         company_name=payload.company_name,
         raw_job_description=payload.raw_job_description,
-        candidate_name=payload.candidate_name or "Alex Mercer",
+        candidate_name=payload.candidate_name or "",
         candidate_summary=payload.candidate_summary,
         master_profile=payload.master_profile,
         tone=payload.tone or "professional"

@@ -392,12 +392,12 @@ export const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
         </div>
 
         {/* Company Channels list toggle */}
-        {showChannels && recruiters.length > 0 && (
+        {showChannels && Array.isArray(recruiters) && recruiters.length > 0 && (
           <div className="p-2 bg-slate-50 rounded-lg border border-slate-200 flex flex-col gap-1.5">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
               Verified Company Talent Inboxes:
             </span>
-            {recruiters.map((rec, i) => (
+            {(recruiters || []).map((rec, i) => (
               <div
                 key={i}
                 onClick={() => {
@@ -484,13 +484,13 @@ export const RecruiterOutreach: React.FC<RecruiterOutreachProps> = ({
           )}
 
           {/* Predicted emails selection pills */}
-          {predictedEmails.length > 0 && (
+          {Array.isArray(predictedEmails) && predictedEmails.length > 0 && (
             <div className="p-2 bg-indigo-50/60 rounded-lg border border-indigo-100 flex flex-col gap-1.5 mt-1">
               <span className="text-[10px] font-bold text-indigo-900 uppercase tracking-wider">
                 Predicted Email Permutations (Click to select):
               </span>
               <div className="grid grid-cols-1 gap-1">
-                {predictedEmails.map((opt, idx) => (
+                {(predictedEmails || []).map((opt, idx) => (
                   <div
                     key={idx}
                     onClick={() => {

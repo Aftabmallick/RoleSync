@@ -12,7 +12,7 @@ class CoverLetterService:
         target_role: str,
         company_name: str,
         raw_job_description: str,
-        candidate_name: str = "Alex Mercer",
+        candidate_name: Optional[str] = None,
         candidate_summary: Optional[str] = None,
         master_profile: Optional[Dict[str, Any]] = None,
         tone: str = "professional"
@@ -27,7 +27,7 @@ class CoverLetterService:
         # 2. Extract profile details
         profile = master_profile or {}
         personal = profile.get("personal", {})
-        cand_name = personal.get("full_name") or candidate_name or "Alex Mercer"
+        cand_name = personal.get("full_name") or candidate_name or ""
         cand_summary = personal.get("summary") or candidate_summary or profile.get("summary") or (
             f"Experienced {target_role} specializing in scalable architecture and high-performance engineering."
         )
@@ -145,7 +145,7 @@ class CoverLetterService:
                 )
             elif projects:
                 p = projects[0]
-                p_name = p.get("name", "TitanRAG")
+                p_name = p.get("name", "Technical Project")
                 p_tech = p.get("technologies") or top_skills_str
                 p_bullet = p.get("bullets", [{}])[0].get("text", "Engineered scalable cloud applications.")
                 body_paragraphs.append(

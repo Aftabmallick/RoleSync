@@ -82,7 +82,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score }) => {
       </div>
 
       {/* Matched Skills Chips */}
-      {score.matched_skills && score.matched_skills.length > 0 && (
+      {Array.isArray(score.matched_skills) && score.matched_skills.length > 0 && (
         <div className="pt-2 border-t border-slate-100">
           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
             Matched Skills

@@ -48,6 +48,20 @@ class SelectorDriftException(RoleSyncException):
         )
 
 
+class ProfileUninitializedException(RoleSyncException):
+    def __init__(
+        self,
+        detail: str = "Master profile with candidate identity is required for tailoring",
+        error_type: str = "https://rolesync.ai/errors/profile-uninitialized"
+    ):
+        super().__init__(
+            title="PROFILE_UNINITIALIZED",
+            detail=detail,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_type=error_type
+        )
+
+
 def register_problem_handlers(app: FastAPI) -> None:
     """
     Mounts RFC 7807 compliant exception handlers to FastAPI application.

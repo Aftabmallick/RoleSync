@@ -3,10 +3,10 @@ from pydantic import BaseModel, Field
 
 
 class ResumeMatchRequest(BaseModel):
-    job_description: str = Field(..., description="Full text of the target job posting")
-    target_role: str = Field(..., description="Target job title")
-    company_name: str = Field(..., description="Target company name")
-    resume: Dict[str, Any] = Field(..., description="Candidate resume profile dictionary")
+    job_description: Optional[str] = Field(default="", description="Full text of the target job posting")
+    target_role: Optional[str] = Field(default="Software Engineer", description="Target job title")
+    company_name: Optional[str] = Field(default="Target Company", description="Target company name")
+    resume: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Candidate resume profile dictionary")
 
 
 class SkillAdditionSuggestion(BaseModel):

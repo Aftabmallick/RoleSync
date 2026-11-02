@@ -553,28 +553,6 @@ class ResumeParserService:
         if current_exp and current_exp["bullets"]:
             entries.append(current_exp)
 
-        # Fallback if no dates matched structured format
-        if not entries:
-            bullets = []
-            for line in lines:
-                cleaned = re.sub(r'^[•\-\*▪▫–—·\d.)\s]+', '', line).strip()
-                if (re.search(r'\d+%', cleaned) or '$' in cleaned or len(cleaned) > 40) and len(cleaned) > 20:
-                    bullets.append({"id": f"b_parsed_{len(bullets)+1}", "text": cleaned})
-
-            entries.append({
-                "company": "Apex Systems",
-                "role": "Senior Software Engineer",
-                "start_date": "2021",
-                "end_date": "Present",
-                "location": "San Francisco, CA",
-                "bullets": bullets[:4] if bullets else [
-                    {
-                        "id": "b_1_1",
-                        "text": "Architected high-throughput microservices reducing latency by 45% and saving $1,500,000 annually across 10x traffic volume."
-                    }
-                ]
-            })
-
         return entries
 
     @classmethod

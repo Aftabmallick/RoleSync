@@ -39,20 +39,26 @@ export const TailorDiffViewer: React.FC<TailorDiffViewerProps> = ({
 
   // Build a lookup map of original master bullets by ID
   const masterBulletMap: Record<string, string> = {};
-  for (const exp of masterExperience) {
-    for (const b of exp.bullets || []) {
-      masterBulletMap[b.id] = b.text;
+  for (const exp of masterExperience || []) {
+    const bullets = (exp as any).bullets || (exp as any).bullet_points || [];
+    for (const b of bullets) {
+      if (typeof b === 'string') {
+        masterBulletMap[b] = b;
+      } else if (b && b.id) {
+        masterBulletMap[b.id] = b.text || b.tailored_text || '';
+      }
     }
   }
 
   // Count total tailored bullets and keywords emphasized
   let totalBullets = 0;
   const allKeywords = new Set<string>();
-  for (const exp of tailoredExperience) {
-    for (const b of exp.bullet_points || []) {
+  for (const exp of tailoredExperience || []) {
+    const bullets = (exp as any).bullet_points || (exp as any).bullets || [];
+    for (const b of bullets) {
       totalBullets++;
-      if (b.keywords_emphasized) {
-        b.keywords_emphasized.forEach((k) => allKeywords.add(k));
+      if (b && typeof b === 'object' && b.keywords_emphasized) {
+        b.keywords_emphasized.forEach((k: string) => allKeywords.add(k));
       }
     }
   }
@@ -118,53 +124,58 @@ export const TailorDiffViewer: React.FC<TailorDiffViewerProps> = ({
           )}
 
           {/* List of experience entries with bullets */}
-          {tailoredExperience.map((exp, expIdx) => (
-            <div key={expIdx} className="flex flex-col gap-2.5">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-1">
-                <span className="font-bold text-slate-800">{exp.role}</span>
-                <span className="text-[11px] text-slate-500 font-medium">
-                  {exp.company} • {exp.dates}
-                </span>
-              </div>
+          {(tailoredExperience || []).map((exp: any, expIdx: number) => {
+            const bullets = exp.bullet_points || exp.bullets || [];
+            return (
+              <div key={expIdx} className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1">
+                  <span className="font-bold text-slate-800">{exp.role}</span>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    {exp.company} • {exp.dates}
+                  </span>
+                </div>
 
-              <div className="flex flex-col gap-2">
-                {exp.bullet_points.map((b, bIdx) => {
-                  const original = masterBulletMap[b.original_bullet_id];
-                  const hasKeywords = b.keywords_emphasized && b.keywords_emphasized.length > 0;
+                <div className="flex flex-col gap-2">
+                  {bullets.map((b: any, bIdx: number) => {
+                    const bulletId = typeof b === 'string' ? b : (b.original_bullet_id || b.id || `b_${bIdx}`);
+                    const tailoredText = typeof b === 'string' ? b : (b.tailored_text || b.text || '');
+                    const original = masterBulletMap[bulletId];
+                    const hasKeywords = b && typeof b === 'object' && b.keywords_emphasized && b.keywords_emphasized.length > 0;
 
-                  return (
-                    <div
-                      key={bIdx}
-                      className="p-2.5 rounded-lg border border-slate-100 bg-slate-50/50 flex flex-col gap-1.5"
-                    >
-                      {viewMode === 'diff' && original && original !== b.tailored_text && (
-                        <div className="text-[11px] text-slate-400 line-through pl-2 border-l-2 border-amber-300">
-                          {original}
+                    return (
+                      <div
+                        key={bIdx}
+                        className="p-2.5 rounded-lg border border-slate-100 bg-slate-50/50 flex flex-col gap-1.5"
+                      >
+                        {viewMode === 'diff' && original && original !== tailoredText && (
+                          <div className="text-[11px] text-slate-400 line-through pl-2 border-l-2 border-amber-300">
+                            {original}
+                          </div>
+                        )}
+
+                        <div className="text-[11px] text-slate-700 pl-2 border-l-2 border-emerald-500 font-medium leading-relaxed">
+                          {tailoredText}
                         </div>
-                      )}
 
-                      <div className="text-[11px] text-slate-700 pl-2 border-l-2 border-emerald-500 font-medium leading-relaxed">
-                        {b.tailored_text}
+                        {hasKeywords && (
+                          <div className="flex flex-wrap gap-1 pt-1">
+                            {(b.keywords_emphasized || []).map((kw: string, kIdx: number) => (
+                              <span
+                                key={kIdx}
+                                className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200"
+                              >
+                                +{kw}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
-
-                      {hasKeywords && (
-                        <div className="flex flex-wrap gap-1 pt-1">
-                          {b.keywords_emphasized!.map((kw, kIdx) => (
-                            <span
-                              key={kIdx}
-                              className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200"
-                            >
-                              +{kw}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

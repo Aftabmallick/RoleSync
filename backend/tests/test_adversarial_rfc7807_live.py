@@ -18,7 +18,10 @@ import sqlite3
 import sys
 import uuid
 from typing import Any, Dict, List, Optional
-import psycopg2
+try:
+    import psycopg2
+except ImportError:
+    psycopg2 = None
 import requests
 
 BASE_URL = "http://127.0.0.1:8000"
